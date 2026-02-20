@@ -3,6 +3,7 @@ import logging
 from openai import OpenAI
 
 from app.config import settings
+from app.prompts import PHISHING_JUDGE_SYSTEM, build_target_context
 
 logger = logging.getLogger(__name__)
 
@@ -21,12 +22,20 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def chat(prompt: str, model: str = "deepseek-chat") -> str:
+def chat(prompt: str, model: str = "deepseek-chat", target_info: dict | None = None) -> str:
     client = _get_client()
+    system_content = PHISHING_JUDGE_SYSTEM
+    if target_info:
+        system_content += build_target_context(target_info)
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": prompt},
+    ]
+    logger.info("LLM request payload:\n[system] %s\n[user] %s", system_content, prompt)
     try:
         resp = client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=messages,
         )
     except Exception:
         logger.exception("DeepSeek API call failed")

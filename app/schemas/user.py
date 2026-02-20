@@ -2,6 +2,11 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class UserLogin(BaseModel):
+    email: str
+    firstname: str
+
+
 class UserCreate(BaseModel):
     firstname: str
     lastname: str

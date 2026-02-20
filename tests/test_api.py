@@ -54,6 +54,39 @@ class TestCreateUser:
         assert detail["user_id"] == sample_user["id"]
 
 
+class TestLoginUser:
+    def test_login_success(self, client, sample_user):
+        resp = client.post("/users/login", json={
+            "email": "alice@example.com",
+            "firstname": "Alice",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["id"] == sample_user["id"]
+        assert resp.json()["email"] == "alice@example.com"
+
+    def test_login_case_insensitive(self, client, sample_user):
+        """firstname 大小写不敏感"""
+        resp = client.post("/users/login", json={
+            "email": "alice@example.com",
+            "firstname": "alice",
+        })
+        assert resp.status_code == 200
+
+    def test_login_wrong_firstname(self, client, sample_user):
+        resp = client.post("/users/login", json={
+            "email": "alice@example.com",
+            "firstname": "Bob",
+        })
+        assert resp.status_code == 401
+
+    def test_login_email_not_found(self, client):
+        resp = client.post("/users/login", json={
+            "email": "nobody@example.com",
+            "firstname": "Ghost",
+        })
+        assert resp.status_code == 401
+
+
 class TestGetUser:
     def test_get_user(self, client, sample_user):
         resp = client.get(f"/users/{sample_user['id']}")
@@ -289,30 +322,65 @@ class TestRankings:
 # ===================== LLM =====================
 
 class TestLLMChat:
+    SAMPLE_TARGET = {
+        "name": "Alex Johnson",
+        "email": "alex.j@acc.com",
+        "department": "IT Security",
+        "position": "Senior Security Analyst",
+        "hobbies": ["Cybersecurity Research", "Penetration Testing"],
+        "personality": "Detail-oriented, skeptical, tech-savvy",
+        "mission": {
+            "title": "Security Update Required",
+            "description": "Urgent security patch needs immediate attention",
+            "targetLink": "https://secure-update.company.com/patch",
+            "difficulty": "Medium",
+            "hint": "Exploit technical urgency",
+        },
+    }
+
+    def _chat_body(self, **overrides):
+        body = {
+            "prompt": "From: IT\nTo: Alex\nSubject: Urgent\n\nPlease update now.",
+            "model": "deepseek-chat",
+            "target_information": self.SAMPLE_TARGET,
+        }
+        body.update(overrides)
+        return body
+
     def test_chat_no_api_key(self, client):
         """API key 未配置时返回 503"""
         with patch("app.routers.llm.settings") as mock_settings:
             mock_settings.deepseek_api_key = ""
-            resp = client.post("/llm/chat", json={"prompt": "Hello"})
+            resp = client.post("/llm/chat", json=self._chat_body())
             assert resp.status_code == 503
 
     def test_chat_success(self, client):
-        """Mock LLM 调用"""
-        with patch("app.routers.llm.chat", return_value="Hi there!") as mock_chat, \
+        """Mock LLM 调用，target_info 应传入 system prompt"""
+        with patch("app.routers.llm.chat", return_value='{"total_score": 75}') as mock_chat, \
              patch("app.routers.llm.settings") as mock_settings:
             mock_settings.deepseek_api_key = "fake-key"
-            resp = client.post("/llm/chat", json={"prompt": "Hello"})
+            resp = client.post("/llm/chat", json=self._chat_body())
             assert resp.status_code == 200
-            assert resp.json()["reply"] == "Hi there!"
-            mock_chat.assert_called_once_with("Hello", model="deepseek-chat")
+            assert "total_score" in resp.json()["reply"]
+            assert mock_chat.call_count == 1
+            # prompt (user message) 只包含邮件内容
+            prompt_sent = mock_chat.call_args[0][0]
+            assert "From: IT" in prompt_sent
+            # target_info 通过 kwarg 传入（用于 system prompt）
+            target_sent = mock_chat.call_args[1]["target_info"]
+            assert target_sent["name"] == "Alex Johnson"
+            assert target_sent["department"] == "IT Security"
 
     def test_chat_custom_model(self, client):
         with patch("app.routers.llm.chat", return_value="response") as mock_chat, \
              patch("app.routers.llm.settings") as mock_settings:
             mock_settings.deepseek_api_key = "fake-key"
-            resp = client.post("/llm/chat", json={
-                "prompt": "Test",
-                "model": "deepseek-reasoner",
-            })
+            resp = client.post("/llm/chat", json=self._chat_body(model="deepseek-reasoner"))
             assert resp.status_code == 200
-            mock_chat.assert_called_once_with("Test", model="deepseek-reasoner")
+            assert mock_chat.call_args[1]["model"] == "deepseek-reasoner"
+            assert mock_chat.call_args[1]["target_info"]["name"] == "Alex Johnson"
+
+    def test_chat_missing_target_info(self, client):
+        """缺少 target_information 应返回 422"""
+        resp = client.post("/llm/chat", json={"prompt": "Hello"})
+        assert resp.status_code == 422

@@ -5,10 +5,23 @@ from sqlalchemy.orm import Session
 
 from app.crud import user as crud
 from app.database import get_db
-from app.schemas.user import UserCreate, UserUpdate, UserResponse
+from app.schemas.user import UserLogin, UserCreate, UserUpdate, UserResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.post("/login", response_model=UserResponse)
+def login(data: UserLogin, db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, data.email)
+    if not user:
+        logger.warning("Login failed: email not found (%s)", data.email)
+        raise HTTPException(status_code=401, detail="Invalid email or firstname")
+    if user.firstname.lower() != data.firstname.lower():
+        logger.warning("Login failed: firstname mismatch for email=%s", data.email)
+        raise HTTPException(status_code=401, detail="Invalid email or firstname")
+    logger.info("Login success: id=%s, email=%s", user.id, user.email)
+    return user
 
 
 @router.post("/", response_model=UserResponse)
