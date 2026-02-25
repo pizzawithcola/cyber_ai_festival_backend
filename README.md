@@ -74,9 +74,10 @@ Base URL: `http://127.0.0.1:8848`
 | Users | PUT | `/users/{user_id}` | 更新用户 |
 | Users | DELETE | `/users/{user_id}` | 删除用户 |
 | Users | GET | `/users/` | 用户列表 |
+| Users | GET | `/users/userscores` | 所有用户成绩 |
 | Scores | POST | `/scores/` | 创建分数 |
-| Scores | GET | `/scores/{score_id}` | 获取分数 |
-| Scores | PUT | `/scores/{score_id}` | 更新分数 |
+| Scores | GET | `/scores/{user_id}` | 获取分数 |
+| Scores | PUT | `/scores/{user_id}` | 更新分数 |
 | Scores | GET | `/scores/user/{user_id}` | 某用户的分数列表 |
 | Rankings | GET | `/rankings/{score_type}` | 单个排行榜 |
 | Rankings | GET | `/rankings/` | 全部排行榜 |
@@ -191,9 +192,56 @@ Base URL: `http://127.0.0.1:8848`
 
 ---
 
+#### `GET /users/userscores` — 所有用户成绩
+
+获取所有用户及其成绩信息，包括成绩ID（即用户ID）、五个游戏的分数和总分。
+
+**Response** `200`
+```json
+[
+  {
+    "id": 1,
+    "firstname": "Alice",
+    "lastname": "Wang",
+    "email": "alice@example.com",
+    "region": "MENA",
+    "score_id": 1,
+    "game1_score": 0.0,
+    "game2_score": 0.0,
+    "game3_score": 0.0,
+    "game4_score": 0.0,
+    "game5_score": 0.0,
+    "total_score": 0.0
+  },
+  {
+    "id": 2,
+    "firstname": "Bob",
+    "lastname": "Li",
+    "email": "bob@example.com",
+    "region": "APAC",
+    "score_id": 2,
+    "game1_score": 95.0,
+    "game2_score": 85.0,
+    "game3_score": 75.0,
+    "game4_score": 90.0,
+    "game5_score": 80.0,
+    "total_score": 425.0
+  }
+]
+```
+
+**说明**:
+- 每个用户创建时自动创建一条分数记录，初始值均为0.0
+- `score_id` 字段即为用户ID（1:1关系）
+- 所有分数字段均为必填，返回值为浮点数格式
+
+---
+
 ### Scores
 
 #### `POST /scores/` — 创建分数
+
+**注意**: 每个用户只能有一条分数记录。用户创建时会自动创建默认分数记录，此接口用于创建新用户的分数（如果尚未存在）。
 
 **Request Body**
 ```json
@@ -211,21 +259,27 @@ Base URL: `http://127.0.0.1:8848`
 **Response** `200`
 ```json
 {
-  "id": 1,
   "user_id": 1,
-  "game1_score": 80,
-  "game2_score": 70,
-  "game3_score": 90,
-  "game4_score": 60,
-  "game5_score": 85,
-  "total_score": 385,
+  "game1_score": 80.0,
+  "game2_score": 70.0,
+  "game3_score": 90.0,
+  "game4_score": 60.0,
+  "game5_score": 85.0,
+  "total_score": 385.0,
   "created_at": "2026-02-15T22:00:00+00:00"
 }
 ```
 
+**Error** `409` — 分数记录已存在
+```json
+{ "detail": "Score already exists for user_id=1" }
+```
+
 ---
 
-#### `GET /scores/{score_id}` — 获取分数
+#### `GET /scores/{user_id}` — 获取分数
+
+通过用户ID获取分数记录。
 
 **Response** `200` — 同上 ScoreResponse
 
@@ -236,15 +290,29 @@ Base URL: `http://127.0.0.1:8848`
 
 ---
 
-#### `PUT /scores/{score_id}` — 更新分数
+#### `PUT /scores/{user_id}` — 更新分数
 
 只需传要修改的字段，未传的保持不变。
+
+**自动计算规则**：
+- 当更新任意游戏分数（game1_score 到 game5_score）时，`total_score` 会自动计算为五个游戏分数的总和
+- 如果同时手动设置了 `total_score`，则使用手动设置的值（不会自动计算）
+- 如果只更新 `total_score` 而不更新游戏分数，则保持原有游戏分数不变
 
 **Request Body**（全部字段可选）
 ```json
 {
   "game1_score": 95,
-  "total_score": 400
+  "game2_score": 85,
+  // total_score 会自动计算为 95 + 85 + 0 + 0 + 0 = 180
+}
+```
+
+或者手动设置 total_score：
+```json
+{
+  "game1_score": 95,
+  "total_score": 400  // 手动设置，不会被自动计算覆盖
 }
 ```
 
@@ -366,15 +434,17 @@ Base URL: `http://127.0.0.1:8848`
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | int | PK, 自增 | 分数 ID |
-| user_id | int | FK → users.id, CASCADE | 所属用户 |
-| game1_score | float | 可选, 默认 0 | 游戏 1 分数 |
-| game2_score | float | 可选, 默认 0 | 游戏 2 分数 |
-| game3_score | float | 可选, 默认 0 | 游戏 3 分数 |
-| game4_score | float | 可选, 默认 0 | 游戏 4 分数 |
-| game5_score | float | 可选, 默认 0 | 游戏 5 分数 |
-| total_score | float | 可选, 默认 0 | 总分 |
+| user_id | int | PK, FK → users.id, CASCADE | 用户 ID (主键) |
+| game1_score | float | 必填, 默认 0 | 游戏 1 分数 |
+| game2_score | float | 必填, 默认 0 | 游戏 2 分数 |
+| game3_score | float | 必填, 默认 0 | 游戏 3 分数 |
+| game4_score | float | 必填, 默认 0 | 游戏 4 分数 |
+| game5_score | float | 必填, 默认 0 | 游戏 5 分数 |
+| total_score | float | 必填, 默认 0 | 总分 |
 | created_at | datetime | 自动生成 | 创建时间 |
+
+**说明**: Score表与User表为1:1关系，每个用户创建时自动创建一条分数记录，初始值均为0。
+通过 `PUT /scores/{user_id}` 更新游戏分数时，`total_score` 会自动计算为五个游戏分数的总和（除非同时手动设置了 `total_score`）。
 
 ---
 
@@ -410,7 +480,7 @@ app/
   routers/           # 路由（users, scores, rankings, llm）
   services/          # 业务服务（llm_service）
 alembic/             # 数据库迁移
-tests/               # 测试（pytest, 34 个用例）
+tests/               # 测试（pytest, 43 个用例）
 logs/                # 日志文件（自动轮转，git ignored）
 requirements.txt
 ```

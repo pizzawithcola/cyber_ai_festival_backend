@@ -15,4 +15,4 @@ class User(Base):
     region = Column(String(128), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    scores = relationship("Score", back_populates="user")
+    score = relationship("Score", back_populates="user", uselist=False, cascade="all, delete-orphan")

@@ -163,39 +163,161 @@ class TestListUsers:
         assert len(resp.json()) == 2
 
 
+class TestGetAllUsersWithScores:
+    def test_get_userscores_empty(self, client):
+        """Test userscores endpoint with no users"""
+        resp = client.get("/users/userscores")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_get_userscores_default_scores(self, client, sample_user):
+        """Test userscores with users - now each user has default scores"""
+        resp = client.get("/users/userscores")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        user = data[0]
+        assert user["id"] == sample_user["id"]
+        assert user["firstname"] == "Alice"
+        assert user["lastname"] == "Wang"
+        assert user["email"] == "alice@example.com"
+        assert user["region"] == "MENA"
+        # Score ID should be the user ID in 1:1 relationship
+        assert user["score_id"] == sample_user["id"]
+        # Scores should have default values (0) instead of None
+        assert user["game1_score"] == 0
+        assert user["game2_score"] == 0
+        assert user["game3_score"] == 0
+        assert user["game4_score"] == 0
+        assert user["game5_score"] == 0
+        assert user["total_score"] == 0
+
+    def test_get_userscores_with_scores(self, client, sample_user):
+        """Test userscores after updating scores"""
+        # Update the user's score
+        resp = client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "game3_score": 90,
+            "game4_score": 60,
+            "game5_score": 85,
+            "total_score": 385
+        })
+        assert resp.status_code == 200
+        
+        # Test userscores endpoint
+        resp = client.get("/users/userscores")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        user = data[0]
+        assert user["id"] == sample_user["id"]
+        assert user["firstname"] == "Alice"
+        assert user["lastname"] == "Wang"
+        assert user["email"] == "alice@example.com"
+        assert user["region"] == "MENA"
+        # Score ID should be the user ID
+        assert user["score_id"] == sample_user["id"]
+        # Scores should be present
+        assert user["game1_score"] == 80
+        assert user["game2_score"] == 70
+        assert user["game3_score"] == 90
+        assert user["game4_score"] == 60
+        assert user["game5_score"] == 85
+        assert user["total_score"] == 385
+
+    def test_get_userscores_multiple_users(self, client):
+        """Test userscores with multiple users"""
+        # Create first user (score will be created automatically)
+        user1 = client.post("/users/", json={
+            "firstname": "Alice",
+            "lastname": "Wang",
+            "email": "alice@example.com",
+            "region": "MENA"
+        }).json()
+        
+        # Update first user's score
+        client.put(f"/scores/{user1['id']}", json={
+            "game1_score": 90,
+            "game2_score": 80,
+            "total_score": 170
+        })
+        
+        # Create second user (score will be created automatically)
+        user2 = client.post("/users/", json={
+            "firstname": "Bob",
+            "lastname": "Li",
+            "email": "bob@example.com",
+            "region": "APAC"
+        }).json()
+        
+        # Update second user's score
+        client.put(f"/scores/{user2['id']}", json={
+            "game1_score": 70,
+            "game2_score": 95,
+            "total_score": 165
+        })
+        
+        resp = client.get("/users/userscores")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        
+        # Sort by user id to ensure consistent order
+        data.sort(key=lambda x: x["id"])
+        
+        # First user
+        assert data[0]["firstname"] == "Alice"
+        assert data[0]["score_id"] == user1["id"]
+        assert data[0]["game1_score"] == 90
+        assert data[0]["game2_score"] == 80
+        assert data[0]["total_score"] == 170
+        
+        # Second user
+        assert data[1]["firstname"] == "Bob"
+        assert data[1]["score_id"] == user2["id"]
+        assert data[1]["game1_score"] == 70
+        assert data[1]["game2_score"] == 95
+        assert data[1]["total_score"] == 165
+
+
 # ===================== Scores =====================
 
 class TestCreateScore:
-    def test_create_score(self, client, sample_user):
+    def test_create_score_conflict(self, client, sample_user):
+        """Test that creating score for existing user returns 409"""
         resp = client.post("/scores/", json={
             "user_id": sample_user["id"],
             "game1_score": 95,
             "total_score": 95,
         })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["game1_score"] == 95
-        assert data["total_score"] == 95
-        assert data["user_id"] == sample_user["id"]
-        assert "id" in data
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
 
-    def test_create_score_defaults(self, client, sample_user):
-        """未传的分数默认为 0"""
+    def test_create_score_defaults_conflict(self, client, sample_user):
+        """Test that creating score with defaults for existing user returns 409"""
         resp = client.post("/scores/", json={
             "user_id": sample_user["id"],
         })
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["game1_score"] == 0
-        assert data["game2_score"] == 0
-        assert data["total_score"] == 0
+        assert resp.status_code == 409
+        assert "already exists" in resp.json()["detail"]
 
 
 class TestGetScore:
-    def test_get_score(self, client, sample_score):
-        resp = client.get(f"/scores/{sample_score['id']}")
+    def test_get_score(self, client, sample_user):
+        # Update score first to set expected values
+        client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "total_score": 150
+        })
+        
+        # Use user_id instead of score_id since they're the same in 1:1 relationship
+        resp = client.get(f"/scores/{sample_user['id']}")
         assert resp.status_code == 200
-        assert resp.json()["game1_score"] == 80
+        data = resp.json()
+        assert data["game1_score"] == 80
+        assert data["user_id"] == sample_user["id"]
 
     def test_get_score_not_found(self, client):
         resp = client.get("/scores/9999")
@@ -203,21 +325,74 @@ class TestGetScore:
 
 
 class TestUpdateScore:
-    def test_update_score_partial(self, client, sample_score):
+    def test_update_score_partial(self, client, sample_user):
         """只更新 game1"""
-        resp = client.put(f"/scores/{sample_score['id']}", json={"game1_score": 99})
+        # First set initial values
+        client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "total_score": 150
+        })
+        
+        # Then update game1 only
+        resp = client.put(f"/scores/{sample_user['id']}", json={"game1_score": 99})
         assert resp.status_code == 200
-        assert resp.json()["game1_score"] == 99
-        assert resp.json()["game2_score"] == 70  # 其他不变
+        data = resp.json()
+        assert data["game1_score"] == 99
+        assert data["game2_score"] == 70  # 其他不变
+        assert data["user_id"] == sample_user["id"]
 
-    def test_update_score_total(self, client, sample_score):
-        resp = client.put(f"/scores/{sample_score['id']}", json={
+    def test_update_score_total(self, client, sample_user):
+        # First set initial values
+        client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "total_score": 150
+        })
+        
+        # Then update
+        resp = client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 100,
             "total_score": 405,
         })
         assert resp.status_code == 200
-        assert resp.json()["game1_score"] == 100
-        assert resp.json()["total_score"] == 405
+        data = resp.json()
+        assert data["game1_score"] == 100
+        assert data["total_score"] == 405
+        assert data["user_id"] == sample_user["id"]
+
+    def test_update_score_auto_total_calculation(self, client, sample_user):
+        """Test that total_score is automatically calculated when game scores are updated"""
+        # Update multiple game scores
+        resp = client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 85,
+            "game2_score": 90,
+            "game3_score": 75,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["game1_score"] == 85
+        assert data["game2_score"] == 90
+        assert data["game3_score"] == 75
+        # total_score should be auto-calculated: 85 + 90 + 75 + 0 + 0 = 250
+        assert data["total_score"] == 250
+
+    def test_update_score_only_total_ignored(self, client, sample_user):
+        """Test that manually setting total_score without game scores doesn't trigger auto-calculation"""
+        # Set initial values
+        client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "total_score": 150
+        })
+        
+        # Update only total_score (should not trigger auto-calculation)
+        resp = client.put(f"/scores/{sample_user['id']}", json={"total_score": 200})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_score"] == 200  # Should keep the manually set value
+        assert data["game1_score"] == 80   # Should remain unchanged
+        assert data["game2_score"] == 70   # Should remain unchanged
 
     def test_update_score_not_found(self, client):
         resp = client.put("/scores/9999", json={"game1_score": 50})
@@ -225,12 +400,24 @@ class TestUpdateScore:
 
 
 class TestListScoresByUser:
-    def test_list_scores_by_user(self, client, sample_user, sample_score):
+    def test_list_scores_by_user(self, client, sample_user):
+        # Update score first to set expected values
+        client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 80,
+            "game2_score": 70,
+            "total_score": 150
+        })
+        
         resp = client.get(f"/scores/user/{sample_user['id']}")
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["user_id"] == sample_user["id"]
+        assert data[0]["game1_score"] == 80
 
-    def test_list_scores_by_user_empty(self, client, sample_user):
+    def test_list_scores_by_user_empty_after_delete(self, client, sample_user):
+        # Delete the user to test empty case
+        client.delete(f"/users/{sample_user['id']}")
         resp = client.get(f"/scores/user/{sample_user['id']}")
         assert resp.status_code == 200
         assert resp.json() == []
@@ -242,21 +429,26 @@ class TestRankings:
     def _seed_data(self, client):
         """创建多个用户和分数用于排行榜测试"""
         users = []
-        for i, (fn, ln, email, g1, g2, total) in enumerate([
+        user_scores = [
             ("Alice", "Wang", "alice@test.com", 90, 80, 170),
             ("Bob", "Li", "bob@test.com", 70, 95, 165),
             ("Charlie", "Doe", "charlie@test.com", 85, 60, 145),
-        ]):
+        ]
+        
+        for fn, ln, email, g1, g2, total in user_scores:
             u = client.post("/users/", json={
                 "firstname": fn, "lastname": ln, "email": email, "region": "TEST",
             }).json()
-            client.post("/scores/", json={
-                "user_id": u["id"],
+            users.append(u)
+        
+        # Update scores after users are created (since scores are auto-created)
+        for i, (fn, ln, email, g1, g2, total) in enumerate(user_scores):
+            client.put(f"/scores/{users[i]['id']}", json={
                 "game1_score": g1,
                 "game2_score": g2,
                 "total_score": total,
             })
-            users.append(u)
+            
         return users
 
     def test_ranking_game1(self, client):

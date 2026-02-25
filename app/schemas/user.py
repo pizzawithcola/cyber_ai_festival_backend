@@ -30,3 +30,20 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserScoreResponse(BaseModel):
+    id: int
+    firstname: str
+    lastname: str
+    email: str
+    region: str | None
+    score_id: int | None
+    game1_score: float | None
+    game2_score: float | None
+    game3_score: float | None
+    game4_score: float | None
+    game5_score: float | None
+    total_score: float | None
+
+    model_config = {"from_attributes": True}

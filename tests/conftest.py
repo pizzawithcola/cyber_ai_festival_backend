@@ -73,8 +73,9 @@ def sample_user(client):
 @pytest.fixture()
 def sample_score(client, sample_user):
     """创建一个示例分数并返回响应数据。"""
-    resp = client.post("/scores/", json={
-        "user_id": sample_user["id"],
+    # Score is automatically created when user is created
+    # Update the existing score instead of creating a new one
+    resp = client.put(f"/scores/{sample_user['id']}", json={
         "game1_score": 80,
         "game2_score": 70,
         "game3_score": 90,

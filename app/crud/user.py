@@ -12,6 +12,21 @@ def create_user(db: Session, data: UserCreate) -> User:
         region=data.region,
     )
     db.add(user)
+    db.flush()  # Get the user ID before committing
+    
+    # Create default score record for the user
+    from app.models.score import Score
+    score = Score(
+        user_id=user.id,
+        game1_score=0,
+        game2_score=0,
+        game3_score=0,
+        game4_score=0,
+        game5_score=0,
+        total_score=0
+    )
+    db.add(score)
+    
     db.commit()
     db.refresh(user)
     return user
