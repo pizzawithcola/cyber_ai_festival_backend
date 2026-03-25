@@ -13,19 +13,14 @@ router = APIRouter()
 
 @router.post("/", response_model=ScoreResponse)
 def create_score(data: ScoreCreate, db: Session = Depends(get_db)):
-    logger.info("Creating score for user_id=%s, total=%.1f", data.user_id, data.total_score or 0)
+    logger.info("Creating score for user_id=%s", data.user_id)
     try:
         score = crud.create_score(db, data)
-        logger.info("Score created: user_id=%s", score.user_id)
+        logger.info("Score created: user_id=%s, total=%.1f", score.user_id, score.total_score)
         return score
     except ValueError as e:
         logger.warning("Score creation failed: %s", str(e))
         raise HTTPException(status_code=409, detail=str(e))
-
-
-@router.get("/user/{user_id}", response_model=list[ScoreResponse])
-def list_scores_by_user(user_id: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return crud.get_scores_by_user(db, user_id, skip=skip, limit=limit)
 
 
 @router.get("/{user_id}", response_model=ScoreResponse)

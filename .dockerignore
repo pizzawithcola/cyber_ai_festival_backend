@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker (not needed in image)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+!requirements.txt
+
+# Logs
+logs/
+*.log
+
+# Alembic (migrations embedded in image via copy . .)
+alembic.ini
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Misc
+.DS_Store
+*.bak

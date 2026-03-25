@@ -44,8 +44,12 @@ root_logger.addHandler(file_handler)
 
 logger = logging.getLogger("app")
 
-# Create tables (Alembic handles migrations in production)
-Base.metadata.create_all(bind=engine)
+# Create tables (容错：如果数据库不可达，应用仍可启动，健康检查不受影响)
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables ready")
+except Exception:
+    logger.warning("Database not reachable at startup (will retry on first request): %s", traceback.format_exc())
 
 app = FastAPI(
     title="Cyber AI Festival API",
@@ -56,7 +60,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -84,6 +88,7 @@ async def log_requests(request: Request, call_next):
         return JSONResponse(
             status_code=500,
             content={"detail": "Internal Server Error", "error_id": error_id},
+            headers={"Access-Control-Allow-Origin": "*"},
         )
     duration_ms = (time.time() - start) * 1000
     if response.status_code >= 500:

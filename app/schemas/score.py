@@ -9,7 +9,7 @@ class ScoreCreate(BaseModel):
     game3_score: float = 0
     game4_score: float = 0
     game5_score: float = 0
-    total_score: float = 0
+    # total_score is auto-calculated from game scores, not user-provided
 
 
 class ScoreUpdate(BaseModel):
@@ -18,7 +18,7 @@ class ScoreUpdate(BaseModel):
     game3_score: float | None = None
     game4_score: float | None = None
     game5_score: float | None = None
-    total_score: float | None = None
+    # total_score is auto-calculated, not updatable
 
 
 class ScoreResponse(BaseModel):
@@ -28,7 +28,7 @@ class ScoreResponse(BaseModel):
     game3_score: float
     game4_score: float
     game5_score: float
-    total_score: float
+    total_score: float  # Auto-calculated from game scores
     created_at: datetime
 
     model_config = {"from_attributes": True}

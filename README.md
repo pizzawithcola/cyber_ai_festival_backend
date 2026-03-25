@@ -24,6 +24,7 @@ cd /path/to/cyber_ai_festival_be
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+brew services start postgresql@16
 ```
 
 ### 3. 配置环境变量
@@ -78,7 +79,6 @@ Base URL: `http://127.0.0.1:8848`
 | Scores | POST | `/scores/` | 创建分数 |
 | Scores | GET | `/scores/{user_id}` | 获取分数 |
 | Scores | PUT | `/scores/{user_id}` | 更新分数 |
-| Scores | GET | `/scores/user/{user_id}` | 某用户的分数列表 |
 | Rankings | GET | `/rankings/{score_type}` | 单个排行榜 |
 | Rankings | GET | `/rankings/` | 全部排行榜 |
 | LLM | POST | `/llm/chat` | LLM 对话 |
@@ -251,8 +251,8 @@ Base URL: `http://127.0.0.1:8848`
   "game2_score": 70,       // 可选，默认 0
   "game3_score": 90,       // 可选，默认 0
   "game4_score": 60,       // 可选，默认 0
-  "game5_score": 85,       // 可选，默认 0
-  "total_score": 385       // 可选，默认 0
+  "game5_score": 85        // 可选，默认 0
+  // total_score 将自动计算为 game1-game5 的总和
 }
 ```
 
@@ -265,7 +265,7 @@ Base URL: `http://127.0.0.1:8848`
   "game3_score": 90.0,
   "game4_score": 60.0,
   "game5_score": 85.0,
-  "total_score": 385.0,
+  "total_score": 385.0,    // 自动计算
   "created_at": "2026-02-15T22:00:00+00:00"
 }
 ```
@@ -292,44 +292,20 @@ Base URL: `http://127.0.0.1:8848`
 
 #### `PUT /scores/{user_id}` — 更新分数
 
-只需传要修改的字段，未传的保持不变。
-
-**自动计算规则**：
-- 当更新任意游戏分数（game1_score 到 game5_score）时，`total_score` 会自动计算为五个游戏分数的总和
-- 如果同时手动设置了 `total_score`，则使用手动设置的值（不会自动计算）
-- 如果只更新 `total_score` 而不更新游戏分数，则保持原有游戏分数不变
+只需传要修改的字段，未传的保持不变。`total_score` 将自动计算为五个游戏分数的总和，不可手动设置。
 
 **Request Body**（全部字段可选）
 ```json
 {
   "game1_score": 95,
-  "game2_score": 85,
+  "game2_score": 85
   // total_score 会自动计算为 95 + 85 + 0 + 0 + 0 = 180
-}
-```
-
-或者手动设置 total_score：
-```json
-{
-  "game1_score": 95,
-  "total_score": 400  // 手动设置，不会被自动计算覆盖
 }
 ```
 
 **Response** `200` — 同 ScoreResponse
 
 **Error** `404` — 分数不存在
-
----
-
-#### `GET /scores/user/{user_id}?skip=0&limit=100` — 某用户的分数列表
-
-| 参数 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| skip | int | 0 | 跳过前 N 条 |
-| limit | int | 100 | 返回最多 N 条 |
-
-**Response** `200` — `ScoreResponse[]`
 
 ---
 
@@ -440,11 +416,10 @@ Base URL: `http://127.0.0.1:8848`
 | game3_score | float | 必填, 默认 0 | 游戏 3 分数 |
 | game4_score | float | 必填, 默认 0 | 游戏 4 分数 |
 | game5_score | float | 必填, 默认 0 | 游戏 5 分数 |
-| total_score | float | 必填, 默认 0 | 总分 |
+| total_score | float | 必填, 默认 0 | 总分（自动计算为 game1-game5 之和） |
 | created_at | datetime | 自动生成 | 创建时间 |
 
-**说明**: Score表与User表为1:1关系，每个用户创建时自动创建一条分数记录，初始值均为0。
-通过 `PUT /scores/{user_id}` 更新游戏分数时，`total_score` 会自动计算为五个游戏分数的总和（除非同时手动设置了 `total_score`）。
+**说明**: Score表与User表为1:1关系，每个用户创建时自动创建一条分数记录，初始值均为0。`total_score` 字段由系统自动计算为 game1-game5 的总和，不可手动设置。
 
 ---
 

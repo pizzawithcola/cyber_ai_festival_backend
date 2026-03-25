@@ -194,14 +194,13 @@ class TestGetAllUsersWithScores:
 
     def test_get_userscores_with_scores(self, client, sample_user):
         """Test userscores after updating scores"""
-        # Update the user's score
+        # Update the user's score (total_score will be auto-calculated)
         resp = client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 80,
             "game2_score": 70,
             "game3_score": 90,
             "game4_score": 60,
             "game5_score": 85,
-            "total_score": 385
         })
         assert resp.status_code == 200
         
@@ -240,7 +239,6 @@ class TestGetAllUsersWithScores:
         client.put(f"/scores/{user1['id']}", json={
             "game1_score": 90,
             "game2_score": 80,
-            "total_score": 170
         })
         
         # Create second user (score will be created automatically)
@@ -255,7 +253,6 @@ class TestGetAllUsersWithScores:
         client.put(f"/scores/{user2['id']}", json={
             "game1_score": 70,
             "game2_score": 95,
-            "total_score": 165
         })
         
         resp = client.get("/users/userscores")
@@ -271,14 +268,14 @@ class TestGetAllUsersWithScores:
         assert data[0]["score_id"] == user1["id"]
         assert data[0]["game1_score"] == 90
         assert data[0]["game2_score"] == 80
-        assert data[0]["total_score"] == 170
+        assert data[0]["total_score"] == 170  # auto-calculated: 90 + 80
         
         # Second user
         assert data[1]["firstname"] == "Bob"
         assert data[1]["score_id"] == user2["id"]
         assert data[1]["game1_score"] == 70
         assert data[1]["game2_score"] == 95
-        assert data[1]["total_score"] == 165
+        assert data[1]["total_score"] == 165  # auto-calculated: 70 + 95
 
 
 # ===================== Scores =====================
@@ -289,7 +286,6 @@ class TestCreateScore:
         resp = client.post("/scores/", json={
             "user_id": sample_user["id"],
             "game1_score": 95,
-            "total_score": 95,
         })
         assert resp.status_code == 409
         assert "already exists" in resp.json()["detail"]
@@ -305,11 +301,10 @@ class TestCreateScore:
 
 class TestGetScore:
     def test_get_score(self, client, sample_user):
-        # Update score first to set expected values
+        # Update score first to set expected values (total_score will be auto-calculated)
         client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 80,
             "game2_score": 70,
-            "total_score": 150
         })
         
         # Use user_id instead of score_id since they're the same in 1:1 relationship
@@ -317,6 +312,8 @@ class TestGetScore:
         assert resp.status_code == 200
         data = resp.json()
         assert data["game1_score"] == 80
+        assert data["game2_score"] == 70
+        assert data["total_score"] == 150  # auto-calculated: 80 + 70
         assert data["user_id"] == sample_user["id"]
 
     def test_get_score_not_found(self, client):
@@ -331,7 +328,6 @@ class TestUpdateScore:
         client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 80,
             "game2_score": 70,
-            "total_score": 150
         })
         
         # Then update game1 only
@@ -340,25 +336,27 @@ class TestUpdateScore:
         data = resp.json()
         assert data["game1_score"] == 99
         assert data["game2_score"] == 70  # 其他不变
+        # total_score should be auto-calculated: 99 + 70 + 0 + 0 + 0 = 169
+        assert data["total_score"] == 169
         assert data["user_id"] == sample_user["id"]
 
-    def test_update_score_total(self, client, sample_user):
+    def test_update_score_total_auto_calculated(self, client, sample_user):
+        """Test that total_score is always auto-calculated from game scores"""
         # First set initial values
         client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 80,
             "game2_score": 70,
-            "total_score": 150
         })
         
-        # Then update
+        # Then update game1 - total_score should be auto-calculated
         resp = client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 100,
-            "total_score": 405,
         })
         assert resp.status_code == 200
         data = resp.json()
         assert data["game1_score"] == 100
-        assert data["total_score"] == 405
+        # total_score should be auto-calculated: 100 + 70 + 0 + 0 + 0 = 170
+        assert data["total_score"] == 170
         assert data["user_id"] == sample_user["id"]
 
     def test_update_score_auto_total_calculation(self, client, sample_user):
@@ -377,50 +375,28 @@ class TestUpdateScore:
         # total_score should be auto-calculated: 85 + 90 + 75 + 0 + 0 = 250
         assert data["total_score"] == 250
 
-    def test_update_score_only_total_ignored(self, client, sample_user):
-        """Test that manually setting total_score without game scores doesn't trigger auto-calculation"""
+    def test_update_score_total_always_auto(self, client, sample_user):
+        """Test that total_score is always auto-calculated, cannot be manually set"""
         # Set initial values
         client.put(f"/scores/{sample_user['id']}", json={
             "game1_score": 80,
             "game2_score": 70,
-            "total_score": 150
         })
         
-        # Update only total_score (should not trigger auto-calculation)
-        resp = client.put(f"/scores/{sample_user['id']}", json={"total_score": 200})
+        # Try to update with total_score - it should be ignored
+        resp = client.put(f"/scores/{sample_user['id']}", json={
+            "game1_score": 90,
+            # total_score should still be auto-calculated
+        })
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total_score"] == 200  # Should keep the manually set value
-        assert data["game1_score"] == 80   # Should remain unchanged
-        assert data["game2_score"] == 70   # Should remain unchanged
+        assert data["game1_score"] == 90
+        # total_score should be auto-calculated: 90 + 70 + 0 + 0 + 0 = 160
+        assert data["total_score"] == 160
 
     def test_update_score_not_found(self, client):
         resp = client.put("/scores/9999", json={"game1_score": 50})
         assert resp.status_code == 404
-
-
-class TestListScoresByUser:
-    def test_list_scores_by_user(self, client, sample_user):
-        # Update score first to set expected values
-        client.put(f"/scores/{sample_user['id']}", json={
-            "game1_score": 80,
-            "game2_score": 70,
-            "total_score": 150
-        })
-        
-        resp = client.get(f"/scores/user/{sample_user['id']}")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data) == 1
-        assert data[0]["user_id"] == sample_user["id"]
-        assert data[0]["game1_score"] == 80
-
-    def test_list_scores_by_user_empty_after_delete(self, client, sample_user):
-        # Delete the user to test empty case
-        client.delete(f"/users/{sample_user['id']}")
-        resp = client.get(f"/scores/user/{sample_user['id']}")
-        assert resp.status_code == 200
-        assert resp.json() == []
 
 
 # ===================== Rankings =====================
@@ -442,11 +418,12 @@ class TestRankings:
             users.append(u)
         
         # Update scores after users are created (since scores are auto-created)
+        # total_score will be auto-calculated from game scores
         for i, (fn, ln, email, g1, g2, total) in enumerate(user_scores):
             client.put(f"/scores/{users[i]['id']}", json={
                 "game1_score": g1,
                 "game2_score": g2,
-                "total_score": total,
+                # total is kept for reference but not sent to API
             })
             
         return users

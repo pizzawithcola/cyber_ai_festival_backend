@@ -10,14 +10,21 @@ def create_score(db: Session, data: ScoreCreate) -> Score:
     if existing_score:
         raise ValueError(f"Score already exists for user_id={data.user_id}")
     
+    # Auto-calculate total_score from game scores
+    game1 = data.game1_score or 0
+    game2 = data.game2_score or 0
+    game3 = data.game3_score or 0
+    game4 = data.game4_score or 0
+    game5 = data.game5_score or 0
+    
     score = Score(
         user_id=data.user_id,
-        game1_score=data.game1_score or 0,
-        game2_score=data.game2_score or 0,
-        game3_score=data.game3_score or 0,
-        game4_score=data.game4_score or 0,
-        game5_score=data.game5_score or 0,
-        total_score=data.total_score or 0,
+        game1_score=game1,
+        game2_score=game2,
+        game3_score=game3,
+        game4_score=game4,
+        game5_score=game5,
+        total_score=game1 + game2 + game3 + game4 + game5,
     )
     db.add(score)
     db.commit()
@@ -25,45 +32,35 @@ def create_score(db: Session, data: ScoreCreate) -> Score:
     return score
 
 
-def get_scores_by_user(db: Session, user_id: int, skip: int = 0, limit: int = 100) -> list[Score]:
-    return db.query(Score).filter(Score.user_id == user_id).offset(skip).limit(limit).all()
-
-
-def get_score_by_user(db: Session, user_id: int) -> Score | None:
-    return db.query(Score).filter(Score.user_id == user_id).first()
-
-
 def get_score(db: Session, score_id: int) -> Score | None:
     # In 1:1 relationship, score_id is the same as user_id
     return db.query(Score).filter(Score.user_id == score_id).first()
 
 
+def get_score_by_user(db: Session, user_id: int) -> Score | None:
+    """Alias for get_score - kept for backwards compatibility"""
+    return get_score(db, user_id)
+
+
 def update_score(db: Session, score: Score, data: ScoreUpdate) -> Score:
     update_data = data.model_dump(exclude_unset=True)
     
-    # Check if total_score is explicitly being updated
-    total_score_explicitly_updated = 'total_score' in update_data
-    
-    # Update individual fields first
+    # Update individual game score fields
     for field, value in update_data.items():
         # Ensure None values are converted to 0 for non-nullable fields
-        if value is None and field in ['game1_score', 'game2_score', 'game3_score', 'game4_score', 'game5_score', 'total_score']:
+        if value is None and field in ['game1_score', 'game2_score', 'game3_score', 'game4_score', 'game5_score']:
             setattr(score, field, 0)
         else:
             setattr(score, field, value)
     
-    # Auto-calculate total_score if:
-    # 1. Any game scores were updated, AND
-    # 2. total_score was NOT explicitly updated in this request
-    game_fields_updated = any(field in update_data for field in ['game1_score', 'game2_score', 'game3_score', 'game4_score', 'game5_score'])
-    if game_fields_updated and not total_score_explicitly_updated:
-        score.total_score = (
-            (score.game1_score or 0) +
-            (score.game2_score or 0) +
-            (score.game3_score or 0) +
-            (score.game4_score or 0) +
-            (score.game5_score or 0)
-        )
+    # Always auto-calculate total_score from game scores
+    score.total_score = (
+        (score.game1_score or 0) +
+        (score.game2_score or 0) +
+        (score.game3_score or 0) +
+        (score.game4_score or 0) +
+        (score.game5_score or 0)
+    )
     
     db.commit()
     db.refresh(score)
