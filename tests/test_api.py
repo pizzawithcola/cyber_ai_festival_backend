@@ -3,6 +3,51 @@
 """
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+
+# ===================== API Key Authentication =====================
+
+class TestAPIKeyAuth:
+    """测试 API Key 认证功能"""
+
+    def test_no_api_key_returns_422(self, client_no_auth):
+        """无 API Key 应返回 422"""
+        resp = client_no_auth.get("/users/")
+        assert resp.status_code == 422
+        assert "x-api-key" in str(resp.json())
+
+    def test_invalid_api_key_returns_401(self, client_no_auth):
+        """错误的 API Key 应返回 401"""
+        resp = client_no_auth.get("/users/", headers={"X-API-Key": "wrong-key"})
+        assert resp.status_code == 401
+        assert resp.json()["detail"] == "Invalid API Key"
+
+    def test_valid_api_key_succeeds(self, client):
+        """正确的 API Key 应成功"""
+        resp = client.get("/users/")
+        assert resp.status_code == 200
+
+    def test_health_no_auth_required(self, client_no_auth):
+        """健康检查端点不需要认证"""
+        resp = client_no_auth.get("/health")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+
+    def test_post_requires_auth(self, client_no_auth):
+        """POST 请求也需要认证"""
+        resp = client_no_auth.post("/users/", json={
+            "firstname": "Test",
+            "lastname": "User",
+            "email": "test@example.com",
+        })
+        assert resp.status_code == 422
+
+    def test_api_key_case_sensitive(self, client_no_auth):
+        """API Key 大小写敏感"""
+        resp = client_no_auth.get("/users/", headers={"X-API-Key": "TEST-API-KEY-12345"})
+        assert resp.status_code == 401
+
 
 # ===================== Health =====================
 

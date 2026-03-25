@@ -5,13 +5,26 @@ import traceback
 import uuid
 from logging.handlers import RotatingFileHandler
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import engine, Base
 from app.routers import users, scores, rankings, llm
+
+# --------------- API Key Authentication ---------------
+async def verify_api_key(x_api_key: str = Header(..., description="API Key for authentication")):
+    """Verify API Key from request header"""
+    if not settings.api_key:
+        logger.warning("API_KEY not configured on server!")
+        raise HTTPException(status_code=500, detail="Server configuration error")
+    
+    if x_api_key != settings.api_key:
+        logger.warning(f"Invalid API Key attempt: {x_api_key[:8]}...")
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    
+    return True
 
 # --------------- Logging ---------------
 LOG_LEVEL = getattr(logging, (settings.log_level or "INFO").upper(), logging.INFO)
@@ -65,10 +78,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(users.router, prefix="/users", tags=["users"])
-app.include_router(scores.router, prefix="/scores", tags=["scores"])
-app.include_router(rankings.router, prefix="/rankings", tags=["rankings"])
-app.include_router(llm.router, prefix="/llm", tags=["llm"])
+app.include_router(users.router, prefix="/users", tags=["users"], dependencies=[Depends(verify_api_key)])
+app.include_router(scores.router, prefix="/scores", tags=["scores"], dependencies=[Depends(verify_api_key)])
+app.include_router(rankings.router, prefix="/rankings", tags=["rankings"], dependencies=[Depends(verify_api_key)])
+app.include_router(llm.router, prefix="/llm", tags=["llm"], dependencies=[Depends(verify_api_key)])
 
 
 # --------------- 请求日志中间件 ---------------
@@ -111,6 +124,7 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 def health():
+    """Health check endpoint - no authentication required for ALB"""
     return {"status": "ok"}
 
 

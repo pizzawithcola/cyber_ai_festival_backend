@@ -58,7 +58,8 @@ graph TB
 | **VPC** | vpc-0dda76b286c45fc27 | 虚拟私有云 |
 | **ECS Cluster** | cyber-ai-festival-cluster | Fargate 集群 |
 | **ECS Service** | cyber-ai-festival-service | 托管服务 |
-| **ECS Task Definition** | cyber-ai-festival-task:6 | 最新版本 |
+| **ECS Task Definition** | cyber-ai-festival-task:11 | 最新版本 (带 API Key 认证) |
+| **Docker Image Tag** | final | 最终稳定版本 |
 | **ALB** | cyber-ai-festival-alb | 应用负载均衡器 |
 | **Target Group** | cyber-ai-festival-tg | ALB 目标组 |
 | **RDS** | cyber-ai-festival-db | PostgreSQL 16.13 |
@@ -93,7 +94,7 @@ graph TB
 |----------|-------|
 | Cluster | cyber-ai-festival-cluster |
 | Service | cyber-ai-festival-service |
-| Task Definition | cyber-ai-festival-task:6 |
+| Task Definition | cyber-ai-festival-task:11 |
 | Launch Type | FARGATE |
 | Platform Version | LATEST |
 | Desired Count | 1 |
@@ -101,13 +102,14 @@ graph TB
 | Memory | 1024 MB (1 GB) |
 | Container Port | 8848 |
 | Network Mode | awsvpc |
-| Docker Image | 866730904414.dkr.ecr.ap-south-1.amazonaws.com/cyber-ai-festival-backend:latest |
+| Docker Image | 866730904414.dkr.ecr.ap-south-1.amazonaws.com/cyber-ai-festival-backend:final |
 
 **容器配置**：
 - 非 root 用户运行 (`appuser`, UID 1000)
 - 环境变量：
   - `DATABASE_URL`: PostgreSQL 连接字符串
   - `DEEPSEEK_API_KEY`: LLM API 密钥
+  - `API_KEY`: API 认证密钥
   - `LOG_LEVEL`: 日志级别
 - 健康检查：HTTP GET `/health`
 
@@ -147,6 +149,50 @@ postgresql://postgres:{password}@cyber-ai-festival-db.ctao8iuy2toz.ap-south-1.rd
 |-------------|-------------|
 | `cyber-ai-festival/db-password` | RDS 数据库密码 |
 | `cyber-ai-festival/deepseek-api-key` | DeepSeek LLM API 密钥 |
+| `cyber-ai-festival/api-key` | 前端与后端通信的 API Key |
+
+## API Security
+
+### API Key 认证
+
+所有 API 端点（除 `/health` 外）都需要通过 `X-API-Key` 请求头进行认证。
+
+| Header | Value |
+|--------|-------|
+| X-API-Key | `tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE` |
+
+**认证端点示例**：
+
+```bash
+# 需要认证的请求
+curl -H "X-API-Key: tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE" \
+  http://cyber-ai-festival-alb-xxx.ap-south-1.elb.amazonaws.com/users/
+
+# 健康检查（无需认证）
+curl http://cyber-ai-festival-alb-xxx.ap-south-1.elb.amazonaws.com/health
+```
+
+**认证行为**：
+
+| 场景 | HTTP 状态码 | 响应 |
+|------|------------|------|
+| 无 X-API-Key | 422 | `{"detail":[{"type":"missing","loc":["header","x-api-key"]...}]}` |
+| 错误的 API Key | 401 | `{"detail":"Invalid API Key"}` |
+| 正确的 API Key | 200 | 正常返回数据 |
+
+**安全说明**：
+- API Key 存储在 AWS Secrets Manager，由 ECS 任务在启动时注入
+- 当前为 HTTP 明文传输（建议后续配置 HTTPS）
+- 前端应用需在每次请求时携带 API Key
+
+### HTTPS 配置（待完成）
+
+- **域名**: 暂无（用户需要先获取域名）
+- **SSL 证书**: 计划使用 ACM (*.cyber-ai-festival.com)
+- **配置步骤**:
+  1. 用户获取域名
+  2. 添加 DNS CNAME 记录验证 ACM 证书
+  3. 在 ALB 添加 HTTPS 监听器 (端口 443)
 
 ### 6. CloudWatch Logs
 
@@ -196,23 +242,25 @@ postgresql://postgres:{password}@cyber-ai-festival-db.ctao8iuy2toz.ap-south-1.rd
 
 ## API Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | 健康检查 |
-| POST | `/users/login` | 用户登录 |
-| POST | `/users/` | 创建用户 |
-| GET | `/users/` | 列出所有用户 |
-| GET | `/users/{id}` | 获取用户详情 |
-| PUT | `/users/{id}` | 更新用户 |
-| DELETE | `/users/{id}` | 删除用户 |
-| GET | `/users/userscores` | 获取所有用户及分数 |
-| GET | `/scores/` | 列出所有分数 |
-| POST | `/scores/` | 创建/更新分数 |
-| GET | `/scores/{id}` | 获取分数详情 |
-| GET | `/rankings/` | 获取排行榜 |
-| POST | `/llm/chat` | LLM 对话 |
+> ⚠️ **注意**: 除 `/health` 外，所有端点都需要 `X-API-Key` 请求头认证。
 
-**Swagger UI**: `http://{ALB_DNS}/docs`
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| GET | `/health` | 健康检查 | ❌ |
+| POST | `/users/login` | 用户登录 | ✅ |
+| POST | `/users/` | 创建用户 | ✅ |
+| GET | `/users/` | 列出所有用户 | ✅ |
+| GET | `/users/{id}` | 获取用户详情 | ✅ |
+| PUT | `/users/{id}` | 更新用户 | ✅ |
+| DELETE | `/users/{id}` | 删除用户 | ✅ |
+| GET | `/users/userscores` | 获取所有用户及分数 | ✅ |
+| GET | `/scores/` | 列出所有分数 | ✅ |
+| POST | `/scores/` | 创建/更新分数 | ✅ |
+| GET | `/scores/{id}` | 获取分数详情 | ✅ |
+| GET | `/rankings/` | 获取排行榜 | ✅ |
+| POST | `/llm/chat` | LLM 对话 | ✅ |
+
+**Swagger UI**: `http://{ALB_DNS}/docs` (需要 API Key)
 
 ## Deployment Commands
 
@@ -246,7 +294,34 @@ aws ecs register-task-definition \
 aws ecs update-service \
   --cluster cyber-ai-festival-cluster \
   --service cyber-ai-festival-service \
-  --task-definition cyber-ai-festival-task:6 \
+  --task-definition cyber-ai-festival-task \
+  --region ap-south-1
+```
+
+### API Key 环境变量配置
+
+ECS 任务使用 `API_KEY` 环境变量，从 Secrets Manager 读取：
+
+```json
+{
+  "name": "API_KEY",
+  "valueFrom": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/api-key:api-key::"
+}
+```
+
+如需更新 API Key：
+```bash
+# 更新 Secrets Manager 中的值
+aws secretsmanager put-secret-value \
+  --secret-id cyber-ai-festival/api-key \
+  --secret-string "your-new-api-key" \
+  --region ap-south-1
+
+# 重启 ECS 任务使新密钥生效
+aws ecs update-service \
+  --cluster cyber-ai-festival-cluster \
+  --service cyber-ai-festival-service \
+  --force-new-deployment \
   --region ap-south-1
 ```
 
@@ -339,4 +414,4 @@ nc -zv cyber-ai-festival-db.ctao8iuy2toz.ap-south-1.rds.amazonaws.com 5432
 
 ---
 
-*Last Updated: 2026-03-24*
+*Last Updated: 2026-02-23*

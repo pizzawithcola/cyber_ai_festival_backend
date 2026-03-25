@@ -36,7 +36,16 @@ DATABASE_URL=postgresql://user:password@localhost:5432/cyber_ai_festival
 DEEPSEEK_API_KEY=your-api-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
 LOG_LEVEL=INFO
+API_KEY=your-static-api-key
 ```
+
+| 变量 | 说明 | 示例 |
+|------|------|------|
+| DATABASE_URL | PostgreSQL 连接字符串 | `postgresql://postgres:xxx@host:5432/postgres` |
+| DEEPSEEK_API_KEY | DeepSeek API 密钥 | `sk-xxx` |
+| DEEPSEEK_BASE_URL | DeepSeek API 地址 | `https://api.deepseek.com` |
+| LOG_LEVEL | 日志级别 | `INFO`, `DEBUG`, `WARNING` |
+| API_KEY | 静态 API 密钥 | `tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE` |
 
 ### 4. 数据库迁移
 
@@ -61,9 +70,57 @@ pytest tests/ -v
 
 ---
 
+## API 认证
+
+> ⚠️ **重要**: 所有 API 调用（除 `/health` 外）都需要携带 API Key。
+
+### 请求头格式
+
+```http
+X-API-Key: tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE
+```
+
+### 示例
+
+```bash
+# 需要认证的请求
+curl -H "X-API-Key: tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE" \
+  http://127.0.0.1:8848/users/
+
+# 健康检查（无需认证）
+curl http://127.0.0.1:8848/health
+```
+
+### 认证行为
+
+| 场景 | HTTP 状态码 | 说明 |
+|------|------------|------|
+| 无 X-API-Key | 422 | 缺少必需字段 |
+| 错误的 API Key | 401 | 无效的 API Key |
+| 正确的 API Key | 200 | 认证成功 |
+
+### 前端集成
+
+前端应用在发送请求时需在 HTTP 头中添加 `X-API-Key`：
+
+```javascript
+const API_KEY = 'tMuIZgmb3m3QAZqclgnJQMLAR-zgBRVktitxzpF0LFE';
+
+fetch('http://your-backend-url/users/', {
+  headers: {
+    'X-API-Key': API_KEY,
+    'Content-Type': 'application/json'
+  }
+});
+```
+
+---
+
 ## API 参考
 
-Base URL: `http://127.0.0.1:8848`
+Base URL: `http://127.0.0.1:8848` (本地) 或 `http://{ALB_DNS}` (AWS)
+
+> ⚠️ 所有端点（除 `/health`）都需要 `X-API-Key` 请求头认证。
 
 ### 目录
 
@@ -428,9 +485,10 @@ Base URL: `http://127.0.0.1:8848`
 | 状态码 | 含义 | 常见场景 |
 |--------|------|----------|
 | 200 | 成功 | 所有正常操作 |
+| 401 | 未授权 | API Key 无效或缺失 |
 | 404 | 未找到 | 用户/分数 ID 不存在 |
 | 409 | 冲突 | email 重复 |
-| 422 | 参数错误 | 请求体格式错误、无效枚举值 |
+| 422 | 参数错误 | 请求体格式错误、无效枚举值、缺少 API Key |
 | 500 | 服务器错误 | 未捕获异常（响应包含 error_id） |
 | 503 | 服务不可用 | DeepSeek API key 未配置 |
 
@@ -458,11 +516,37 @@ alembic/             # 数据库迁移
 tests/               # 测试（pytest, 43 个用例）
 logs/                # 日志文件（自动轮转，git ignored）
 requirements.txt
-```
+---
 
-## 部署（后续）
+## AWS 部署
 
-- 推荐：AWS App Runner 或单台小 EC2
-- 生产环境将 `DATABASE_URL` 指向 RDS PostgreSQL
-- `DEEPSEEK_API_KEY` 使用 Secrets Manager 或环境变量
-- 设置 `LOG_LEVEL=WARNING` 减少生产日志量
+### 架构概览
+
+- **计算**: AWS ECS Fargate (无服务器容器)
+- **负载均衡**: Application Load Balancer (ALB)
+- **数据库**: AWS RDS PostgreSQL (db.t3.micro)
+- **安全**: API Key 认证 + HTTPS (待配置)
+- **密钥管理**: AWS Secrets Manager
+
+### AWS 资源
+
+| 资源 | 名称 |
+|------|------|
+| Region | ap-south-1 (孟买) |
+| ECS Cluster | cyber-ai-festival-cluster |
+| ALB DNS | cyber-ai-festival-alb-xxx.ap-south-1.elb.amazonaws.com |
+| ECR Repository | 866730904414.dkr.ecr.ap-south-1.amazonaws.com/cyber-ai-festival-backend |
+
+详细架构文档: [docs/architecture.md](docs/architecture.md)
+
+### 安全配置
+
+- **API Key**: 存储在 AWS Secrets Manager (`cyber-ai-festival/api-key`)
+- **数据库密码**: 存储在 AWS Secrets Manager (`cyber-ai-festival/db-password`)
+- **DeepSeek API Key**: 存储在 AWS Secrets Manager (`cyber-ai-festival/deepseek-api-key`)
+
+### 后续步骤
+
+1. **获取域名** - 当前后端使用 HTTP，待配置 HTTPS
+2. **配置 HTTPS** - 在 ALB 添加 HTTPS 监听器
+3. **配置 WAF** - 添加 Web 应用防火墙防护

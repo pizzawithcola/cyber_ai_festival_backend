@@ -16,5 +16,8 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     log_level: str = "INFO"
 
+    # API Security
+    api_key: str = ""
+
 
 settings = Settings()

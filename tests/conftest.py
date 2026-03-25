@@ -6,6 +6,8 @@ import os
 
 # ⚠️ 必须在导入 app 之前设置，否则 main.py 会尝试连接 PostgreSQL
 os.environ["DATABASE_URL"] = "sqlite://"
+# 测试环境 API Key
+os.environ["API_KEY"] = "test-api-key-12345"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -54,7 +56,22 @@ def setup_database():
 
 @pytest.fixture()
 def client():
+    """TestClient，默认携带正确的 API Key"""
+    test_client = TestClient(app)
+    test_client.headers["X-API-Key"] = "test-api-key-12345"
+    return test_client
+
+
+@pytest.fixture()
+def client_no_auth():
+    """不带 API Key 的 TestClient，用于测试认证失败场景"""
     return TestClient(app)
+
+
+@pytest.fixture()
+def auth_headers():
+    """带正确 API Key 的请求头"""
+    return {"X-API-Key": "test-api-key-12345"}
 
 
 @pytest.fixture()
