@@ -25,6 +25,10 @@
             ],
             "secrets": [
                 {
+                    "name": "API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/api-key"
+                },
+                {
                     "name": "DEEPSEEK_API_KEY",
                     "valueFrom": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/deepseek-api-key:deepseek_api_key::"
                 },
