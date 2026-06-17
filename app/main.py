@@ -14,8 +14,12 @@ from app.database import engine, Base
 from app.routers import users, scores, rankings, llm
 
 # --------------- API Key Authentication ---------------
-async def verify_api_key(x_api_key: str = Header(..., description="API Key for authentication")):
+async def verify_api_key(request: Request, x_api_key: str = Header(..., description="API Key for authentication")):
     """Verify API Key from request header"""
+    # Skip authentication for health check endpoint
+    if request.url.path == "/health":
+        return True
+    
     if not settings.api_key:
         logger.warning("API_KEY not configured on server!")
         raise HTTPException(status_code=500, detail="Server configuration error")

@@ -1,0 +1,99 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:ap-south-1:866730904414:task-definition/cyber-ai-festival-task:1",
+    "containerDefinitions": [
+        {
+            "name": "cyber-ai-festival-backend",
+            "image": "866730904414.dkr.ecr.ap-south-1.amazonaws.com/cyber-ai-festival-backend:latest",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8848,
+                    "hostPort": 8848,
+                    "protocol": "tcp",
+                    "name": "cyber-ai-festival-backend-8848-tcp",
+                    "appProtocol": "http"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "INFO"
+                },
+                {
+                    "name": "DEEPSEEK_API_KEY",
+                    "value": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/deepseek-api-key:deepseek_api_key::"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "value": "postgresql://cyber_user:YourSecurePassword123!@cyber-ai-festival-db.xxx.ap-south-1.rds.amazonaws.com:5432/cyber_ai_festival"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cyber-ai-festival-backend",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                },
+                "secretOptions": []
+            },
+            "systemControls": []
+        }
+    ],
+    "family": "cyber-ai-festival-task",
+    "executionRoleArn": "arn:aws:iam::866730904414:role/ecsTaskExecutionRole",
+    "networkMode": "awsvpc",
+    "revision": 1,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.29"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE",
+        "MANAGED_INSTANCES"
+    ],
+    "runtimePlatform": {
+        "cpuArchitecture": "X86_64",
+        "operatingSystemFamily": "LINUX"
+    },
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "512",
+    "memory": "1024",
+    "registeredAt": "2026-03-24T17:50:39.384000+08:00",
+    "registeredBy": "arn:aws:iam::866730904414:user/JamieLiu8",
+    "enableFaultInjection": false
+}

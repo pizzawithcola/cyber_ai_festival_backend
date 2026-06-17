@@ -19,6 +19,7 @@ class UserUpdate(BaseModel):
     lastname: str | None = None
     email: str | None = None
     region: str | None = None
+    role: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -27,6 +28,7 @@ class UserResponse(BaseModel):
     lastname: str
     email: str
     region: str | None
+    role: str = "player"
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -38,6 +40,7 @@ class UserScoreResponse(BaseModel):
     lastname: str
     email: str
     region: str | None
+    role: str = "player"
     score_id: int | None
     game1_score: float | None
     game2_score: float | None

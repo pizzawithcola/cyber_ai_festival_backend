@@ -545,6 +545,25 @@ requirements.txt
 - **数据库密码**: 存储在 AWS Secrets Manager (`cyber-ai-festival/db-password`)
 - **DeepSeek API Key**: 存储在 AWS Secrets Manager (`cyber-ai-festival/deepseek-api-key`)
 
+### CI/CD 自动部署
+
+代码推送到 `main` 分支后，GitHub Actions 会自动构建 Docker 镜像并部署到 AWS ECS。
+
+**部署流程**:
+1. 推送代码到 `main` → 触发 GitHub Actions
+2. 登录 ECR → 构建 Docker 镜像 → 推送到 ECR
+3. 更新 ECS Task Definition 中的镜像 → 部署到 ECS Service
+4. 等待服务稳定后完成
+
+**GitHub Secrets 配置**:
+
+| Secret 名称 | 说明 |
+|-------------|------|
+| `AWS_ACCESS_KEY_ID` | AWS 访问密钥 ID |
+| `AWS_SECRET_ACCESS_KEY` | AWS 访问密钥 |
+
+配置路径: GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret
+
 ### 后续步骤
 
 1. **获取域名** - 当前后端使用 HTTP，待配置 HTTPS

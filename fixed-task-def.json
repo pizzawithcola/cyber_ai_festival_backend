@@ -1,0 +1,47 @@
+{
+    "family": "cyber-ai-festival-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": ["FARGATE"],
+    "cpu": "512",
+    "memory": "1024",
+    "executionRoleArn": "arn:aws:iam::866730904414:role/ecsTaskExecutionRole",
+    "containerDefinitions": [
+        {
+            "name": "cyber-ai-festival-backend",
+            "image": "866730904414.dkr.ecr.ap-south-1.amazonaws.com/cyber-ai-festival-backend:latest",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 8848,
+                    "hostPort": 8848,
+                    "protocol": "tcp"
+                }
+            ],
+            "environment": [
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "INFO"
+                }
+            ],
+            "secrets": [
+                {
+                    "name": "DEEPSEEK_API_KEY",
+                    "valueFrom": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/deepseek-api-key:deepseek_api_key::"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "arn:aws:secretsmanager:ap-south-1:866730904414:secret:cyber-ai-festival/db-password"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/cyber-ai-festival-backend",
+                    "awslogs-create-group": "true",
+                    "awslogs-region": "ap-south-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ]
+}
