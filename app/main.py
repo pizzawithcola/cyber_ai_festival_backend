@@ -8,6 +8,7 @@ from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, Request, Response, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine, Base
@@ -65,6 +66,41 @@ logger = logging.getLogger("app")
 try:
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ready")
+
+    # ─── Auto-migration: Add role column if not exists ─────────────────────────
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='users' AND column_name='role'"
+        ))
+        if not r.fetchone():
+            conn.execute(text(
+                "ALTER TABLE users ADD COLUMN role VARCHAR(32) NOT NULL DEFAULT 'player'"
+            ))
+            conn.commit()
+            logger.info("Migration: Added 'role' column to users table")
+        else:
+            logger.info("Migration: 'role' column already exists")
+
+        # ─── Create admin account if not exists ────────────────────────────────
+        r = conn.execute(text("SELECT id FROM users WHERE email = 'admin@admin.com'"))
+        if not r.fetchone():
+            conn.execute(text(
+                "INSERT INTO users (firstname, lastname, email, region, role) "
+                "VALUES ('admin', 'account', 'admin@admin.com', 'United Kingdom', 'admin')"
+            ))
+            conn.commit()
+            # Get the new admin user id to create score record
+            r = conn.execute(text("SELECT id FROM users WHERE email = 'admin@admin.com'"))
+            admin_id = r.fetchone()[0]
+            conn.execute(text(
+                "INSERT INTO scores (user_id, game1_score, game2_score, game3_score, game4_score, game5_score, total_score) "
+                "VALUES (:uid, 0, 0, 0, 0, 0, 0)"
+            ), {"uid": admin_id})
+            conn.commit()
+            logger.info("Migration: Created admin account (id=%s)", admin_id)
+        else:
+            logger.info("Migration: Admin account already exists")
 except Exception:
     logger.warning("Database not reachable at startup (will retry on first request): %s", traceback.format_exc())
 

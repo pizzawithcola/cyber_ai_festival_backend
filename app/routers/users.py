@@ -1,6 +1,10 @@
 import logging
+import base64
+import json
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.crud import user as crud
@@ -11,6 +15,41 @@ from app.schemas.user import UserLogin, UserCreate, UserUpdate, UserResponse, Us
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ─── Admin Login ──────────────────────────────────────────────────────────────
+class AdminLoginResponse(BaseModel):
+    token: str
+    user_id: int
+    firstname: str
+    lastname: str
+
+
+@router.post("/admin-login", response_model=AdminLoginResponse)
+def admin_login(data: UserLogin, db: Session = Depends(get_db)):
+    """Admin-only login: returns a token only if the user has role='admin'"""
+    user = crud.get_user_by_email(db, data.email)
+    if not user:
+        logger.warning("Admin login failed: email not found (%s)", data.email)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.firstname.lower() != data.firstname.lower():
+        logger.warning("Admin login failed: firstname mismatch for email=%s", data.email)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if user.role != "admin":
+        logger.warning("Admin login failed: user %s does not have admin role", user.id)
+        raise HTTPException(status_code=403, detail="Access denied: admin role required")
+
+    # Generate simple token (base64 of user_id + role + timestamp)
+    token_payload = base64.b64encode(
+        json.dumps({"uid": user.id, "role": user.role, "ts": int(time.time())}).encode()
+    ).decode()
+    logger.info("Admin login success: id=%s, email=%s", user.id, user.email)
+    return AdminLoginResponse(
+        token=token_payload,
+        user_id=user.id,
+        firstname=user.firstname,
+        lastname=user.lastname,
+    )
 
 
 @router.post("/login", response_model=UserResponse)
