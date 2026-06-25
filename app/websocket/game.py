@@ -244,6 +244,8 @@ class GameSession:
         remaining = q["time_limit"]
         connected = len(self.players)
         self._pause_event = asyncio.Event()
+        # Send initial tick so clients have the starting value
+        await self.broadcast({"type": "tick", "remaining": remaining, "answered_count": 0, "total_players": connected})
         while remaining > 0:
             if self._force_ended:
                 break
@@ -251,16 +253,31 @@ class GameSession:
             if connected > 0 and answered_now >= connected:
                 break  # All answered
 
-            # Check pause
+            # Check pause — enter pause loop
             if self._paused:
-                await self.broadcast({"type": "paused"})
+                await self.broadcast({"type": "paused", "remaining": remaining})
                 self._question_remaining = remaining
-                await self._pause_event.wait()
+                # Wait until resumed (or force-ended)
+                while self._paused and not self._force_ended:
+                    await self._pause_event.wait()
+                if self._force_ended:
+                    break
+                # Resumed
                 await self.broadcast({"type": "resumed", "remaining": remaining})
                 self._pause_event = asyncio.Event()
                 self._paused = False
+                # Re-check exit conditions after resume
+                connected = len(self.players)
+                answered_now = len(self.answers)
+                if connected > 0 and answered_now >= connected:
+                    break
+                if remaining <= 0:
+                    break
 
             await asyncio.sleep(1)
+            # Re-check pause/force after sleep
+            if self._paused or self._force_ended:
+                continue
             remaining -= 1
             connected = len(self.players)
             if connected == 0:
