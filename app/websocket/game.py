@@ -79,6 +79,35 @@ class GameSession:
         await self._end_game()
 
     # ─── Helpers ───────────────────────────────────────────────────────────
+    async def _get_leaderboard(self) -> list[dict]:
+        """Fetch current leaderboard from DB for this room."""
+        db = SessionLocal()
+        try:
+            room = db.query(Room).filter(Room.code == self.room_code).first()
+            if not room:
+                return []
+            players = (
+                db.query(RoomPlayer)
+                .filter(RoomPlayer.room_id == room.id)
+                .order_by(RoomPlayer.total_score.desc())
+                .all()
+            )
+            leaderboard = [
+                {
+                    "rank": i + 1,
+                    "player_id": p.user_id,
+                    "player_name": p.player_name,
+                    "total_score": p.total_score,
+                    "streak": p.streak,
+                }
+                for i, p in enumerate(players)
+            ]
+            db.close()
+            return leaderboard
+        except Exception:
+            db.close()
+            return []
+
     async def broadcast(self, msg: dict):
         """Send message to all connected clients (admin + players)."""
         payload = json.dumps(msg, ensure_ascii=False)
@@ -316,8 +345,18 @@ class GameSession:
                 },
             }, ensure_ascii=False))
 
+        # Broadcast per-question leaderboard after a short delay
+        await asyncio.sleep(2)
+        leaderboard = await self._get_leaderboard()
+        await self.broadcast({
+            "type": "leaderboard",
+            "leaderboard": leaderboard,
+            "question_number": self.current_question_idx + 1,
+            "total_questions": len(self.questions),
+        })
+
         # Wait before next question
-        await asyncio.sleep(4)
+        await asyncio.sleep(3)
         self.current_question_idx += 1
         await self._next_question()
 
@@ -372,6 +411,10 @@ class GameSession:
         if msg_type == "start_game":
             qc = msg.get("question_count", 10)
             await self.start_game(qc)
+        elif msg_type == "pause":
+            self.pause()
+        elif msg_type == "resume":
+            self.resume()
 
     async def handle_player_message(self, ws: WebSocket, msg: dict):
         msg_type = msg.get("type")
