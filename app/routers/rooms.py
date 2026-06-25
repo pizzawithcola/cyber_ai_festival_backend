@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_ws_session(code: str):
+    """Get the in-memory WebSocket game session for a room (if any)."""
+    from app.websocket.game import sessions
+    return sessions.get(code)
+
+
 def _generate_room_code(db: Session) -> str:
     """Generate a unique 4-digit room code."""
     for _ in range(30):
@@ -124,52 +130,49 @@ def join_room(code: str, data: JoinRoomRequest, db: Session = Depends(get_db)):
 # ─── Admin Control ─────────────────────────────────────────────────────────
 @router.post("/{code}/pause")
 def pause_room(code: str, db: Session = Depends(get_db)):
-    """Pause a game room (admin only)."""
+    """Pause a game room (admin only). Idempotent — already paused is OK."""
     room = db.query(Room).filter(Room.code == code).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.status != "playing":
+    if room.status not in ("playing", "paused"):
         raise HTTPException(status_code=400, detail="Can only pause a playing game")
-    from app.websocket.game import sessions
-    session = sessions.get(code)
+    session = _get_ws_session(code)
     if session:
         session.pause()
-    room.status = "paused"
-    db.commit()
+    if room.status != "paused":
+        room.status = "paused"
+        db.commit()
     logger.info("Room %s paused", code)
     return {"status": "paused", "room_code": code}
 
 
 @router.post("/{code}/resume")
 def resume_room(code: str, db: Session = Depends(get_db)):
-    """Resume a paused game room (admin only)."""
+    """Resume a paused game room (admin only). Idempotent — already playing is OK."""
     room = db.query(Room).filter(Room.code == code).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.status != "paused":
+    if room.status not in ("paused", "playing"):
         raise HTTPException(status_code=400, detail="Can only resume a paused game")
-    from app.websocket.game import sessions
-    session = sessions.get(code)
+    session = _get_ws_session(code)
     if session:
         session.resume()
-    room.status = "playing"
-    db.commit()
+    if room.status != "playing":
+        room.status = "playing"
+        db.commit()
     logger.info("Room %s resumed", code)
     return {"status": "playing", "room_code": code}
 
 
 @router.post("/{code}/end")
 def end_room(code: str, db: Session = Depends(get_db)):
-    """Force-end a game room (admin only)."""
+    """Force-end a game room (admin only). Idempotent — already finished is OK."""
     room = db.query(Room).filter(Room.code == code).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.status == "finished":
-        raise HTTPException(status_code=400, detail="Game already finished")
-    from app.websocket.game import sessions
-    session = sessions.get(code)
-    if session:
-        session.force_end()
+    session = _get_ws_session(code)
+    if session and room.status != "finished":
+        session.force_end()  # sync — signals game loop to call _end_game()
     room.status = "finished"
     db.commit()
     logger.info("Room %s force-ended by admin", code)

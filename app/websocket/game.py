@@ -54,6 +54,7 @@ class GameSession:
         self._paused = False
         self._pause_event: Optional[asyncio.Event] = None
         self._question_remaining = 0  # remaining seconds when paused
+        self._force_ended = False  # set by force_end() to break game loop
 
     # ─── Pause / Resume / Force-End ───────────────────────────────────────
     def pause(self):
@@ -70,13 +71,13 @@ class GameSession:
             self._pause_event.clear()
         logger.info("Room %s: game resumed", self.room_code)
 
-    async def force_end(self):
-        """Force-end the game immediately."""
+    def force_end(self):
+        """Signal the game loop to stop immediately. The loop will call _end_game()."""
+        self._force_ended = True
         self._paused = False
         if self._pause_event:
-            self._pause_event.clear()
-        # Broadcast end immediately
-        await self._end_game()
+            self._pause_event.set()  # Unblock pause wait so loop can exit
+        logger.info("Room %s: force-end signaled", self.room_code)
 
     # ─── Helpers ───────────────────────────────────────────────────────────
     async def _get_leaderboard(self) -> list[dict]:
@@ -215,6 +216,9 @@ class GameSession:
 
     async def _next_question(self):
         """Push next question and start answer timer."""
+        if self._force_ended:
+            await self._end_game()
+            return
         if self.current_question_idx >= len(self.questions):
             await self._end_game()
             return
@@ -241,6 +245,8 @@ class GameSession:
         connected = len(self.players)
         self._pause_event = asyncio.Event()
         while remaining > 0:
+            if self._force_ended:
+                break
             answered_now = len(self.answers)
             if connected > 0 and answered_now >= connected:
                 break  # All answered
@@ -264,6 +270,11 @@ class GameSession:
             await self.broadcast({"type": "tick", "remaining": remaining, "answered_count": len(self.answers), "total_players": connected})
 
         self._pause_event = None
+
+        # If force-ended, go directly to end_game
+        if self._force_ended:
+            await self._end_game()
+            return
 
         # Time's up — show result
         await self._show_result(q)
@@ -357,6 +368,9 @@ class GameSession:
 
         # Wait before next question
         await asyncio.sleep(3)
+        if self._force_ended:
+            await self._end_game()
+            return
         self.current_question_idx += 1
         await self._next_question()
 
