@@ -93,7 +93,7 @@ class GameSession:
                 .order_by(RoomPlayer.total_score.desc())
                 .all()
             )
-            leaderboard = [
+            return [
                 {
                     "rank": i + 1,
                     "player_id": p.user_id,
@@ -103,11 +103,10 @@ class GameSession:
                 }
                 for i, p in enumerate(players)
             ]
-            db.close()
-            return leaderboard
         except Exception:
-            db.close()
             return []
+        finally:
+            db.close()
 
     async def broadcast(self, msg: dict):
         """Send message to all connected clients (admin + players)."""
@@ -303,7 +302,8 @@ class GameSession:
         db = SessionLocal()
 
         try:
-            # Calc scores & save
+            # Calc scores & batch collect
+            score_updates: list[dict] = []  # {rp, is_correct, score, streak_bonus}
             for rp_id, ans in self.answers.items():
                 is_correct = (ans["option"] == correct_option)
                 ans_time = ans["ms"]
@@ -317,16 +317,14 @@ class GameSession:
                 ans["correct"] = is_correct
                 ans["score"] = score
 
-                # Save to DB
+                # Batch collect: fetch player, update, collect answer
                 rp = db.query(RoomPlayer).filter(RoomPlayer.id == rp_id).first()
                 if rp:
-                    old_streak = rp.streak
                     if is_correct:
                         rp.streak += 1
                         rp.total_score += score + rp.streak * 100
                     else:
                         rp.streak = 0
-                    db.commit()
 
                     pa = PlayerAnswer(
                         player_id=rp_id,
@@ -337,11 +335,14 @@ class GameSession:
                         score_earned=score + (rp.streak * 100 if is_correct else 0),
                     )
                     db.add(pa)
-                    db.commit()
-            db.close()
+
+            # Single commit for all updates
+            db.commit()
         except Exception:
-            db.close()
+            db.rollback()
             raise
+        finally:
+            db.close()
 
         # Build distribution
         distribution = {"A": 0, "B": 0, "C": 0, "D": 0}
@@ -417,16 +418,22 @@ class GameSession:
                 }
                 for i, p in enumerate(players)
             ]
-            db.close()
         except Exception:
-            db.close()
             raise
+        finally:
+            db.close()
 
         await self.broadcast({
             "type": "game_over",
             "leaderboard": leaderboard,
         })
         logger.info("Room %s: game over, %d players", self.room_code, len(leaderboard))
+
+        # Schedule cleanup: remove session from memory after clients have received game_over
+        room_code = self.room_code
+        asyncio.get_event_loop().call_later(
+            10, lambda: sessions.pop(room_code, None) and logger.info("Room %s: session cleaned up", room_code)
+        )
 
     # ─── Admin messaging ───────────────────────────────────────────────────
     async def _send_admin(self, msg: dict):
