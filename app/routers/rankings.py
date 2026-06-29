@@ -16,11 +16,11 @@ router = APIRouter()
 
 # --------------- 可排名的分数类型 ---------------
 class ScoreType(str, Enum):
-    game1 = "game1"
-    game2 = "game2"
-    game3 = "game3"
-    game4 = "game4"
-    game5 = "game5"
+    game1 = "game1"  # Hallucinate
+    game2 = "game2"  # DataShadows
+    game3 = "game3"  # RetailDemolition
+    game4 = "game4"  # Phishing
+    game5 = "game5"  # Final Showdown
     total = "total"
 
 
