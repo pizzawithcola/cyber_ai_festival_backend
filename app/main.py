@@ -156,6 +156,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# --------------- 启动时自动运行迁移 ---------------
+@app.on_event("startup")
+def run_migrations():
+    """Run data migrations on startup (idempotent)."""
+    try:
+        from app.migrations.rename_game_scores import run_migration
+        run_migration()
+        logger.info("Startup migration check complete.")
+    except Exception as e:
+        logger.error("Startup migration failed: %s", e)
+
 app.include_router(users.router, prefix="/users", tags=["users"], dependencies=[Depends(verify_api_key)])
 app.include_router(scores.router, prefix="/scores", tags=["scores"], dependencies=[Depends(verify_api_key)])
 app.include_router(rankings.router, prefix="/rankings", tags=["rankings"], dependencies=[Depends(verify_api_key)])
