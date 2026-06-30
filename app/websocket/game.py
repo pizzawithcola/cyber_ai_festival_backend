@@ -60,15 +60,15 @@ class GameSession:
     def pause(self):
         """Pause the current question timer."""
         self._paused = True
-        if self._pause_event:
-            self._pause_event.set()
+        # Do NOT set the event — the tick loop should WAIT on it.
+        # resume() / force_end() will set the event to wake the loop.
         logger.info("Room %s: game paused", self.room_code)
 
     def resume(self):
         """Resume the current question timer."""
         self._paused = False
         if self._pause_event:
-            self._pause_event.clear()
+            self._pause_event.set()  # Wake the waiting pause loop
         logger.info("Room %s: game resumed", self.room_code)
 
     def force_end(self):
@@ -450,9 +450,11 @@ class GameSession:
             qc = msg.get("question_count", 10)
             await self.start_game(qc)
         elif msg_type == "pause":
-            self.pause()
+            if not self._paused:
+                self.pause()
         elif msg_type == "resume":
-            self.resume()
+            if self._paused:
+                self.resume()
 
     async def handle_player_message(self, ws: WebSocket, msg: dict):
         msg_type = msg.get("type")
