@@ -160,9 +160,37 @@ app.add_middleware(
 # --------------- 启动时自动运行迁移 ---------------
 @app.on_event("startup")
 def run_migrations():
-    """Run data migrations on startup (idempotent)."""
+    """Run data migrations on startup (idempotent).
+    
+    Safe-guard: if the DB already has the post-migration schema (game1~game5 exist,
+    no temp columns), insert the _migrated_v2 marker before running the migration
+    script — this prevents the migration from re-executing on already-migrated DBs.
+    """
     try:
         from app.migrations.rename_game_scores import run_migration
+        
+        # Pre-check: if DB already looks post-migration, set marker to prevent re-run
+        with engine.connect() as conn:
+            cols = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'scores' AND column_name LIKE 'game%_score'"
+            )).fetchall()
+            has_g5 = any(c[0] == 'game5_score' for c in cols)
+            has_temp = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'scores' AND column_name IN ('_g1_old','_g2_old','_g3_old','_g4_old','_g5_old')"
+            )).fetchone()
+            has_marker = conn.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'scores' AND column_name = '_migrated_v2'"
+            )).fetchone()
+            
+            if has_g5 and not has_temp and not has_marker:
+                # Schema looks post-migration but no marker → add it to prevent re-run
+                conn.execute(text("ALTER TABLE scores ADD COLUMN _migrated_v2 BOOLEAN DEFAULT TRUE"))
+                conn.commit()
+                logger.info("Pre-check: added _migrated_v2 marker to already-migrated DB")
+        
         run_migration()
         logger.info("Startup migration check complete.")
     except Exception as e:

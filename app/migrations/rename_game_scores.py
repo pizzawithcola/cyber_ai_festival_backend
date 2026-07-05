@@ -19,24 +19,37 @@ logger = logging.getLogger(__name__)
 
 
 def run_migration():
+    """One-time migration: renumber game scores after removing DeepFake (old G1).
+
+    IDEMPOTENT: checks for _migrated_v2 marker column — if present, skips entirely.
+    This migration should ONLY run once. Do NOT trigger on every startup.
+    """
     db = SessionLocal()
     try:
-        # Check if migration already done (look for _g1_old column)
+        # ── Idempotency check: _migrated_v2 flag ──────────────────────────
         result = db.execute(text("""
             SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'scores' AND column_name = '_g1_old'
+            WHERE table_name = 'scores' AND column_name = '_migrated_v2'
         """)).fetchone()
 
         if result:
-            logger.info("Migration already applied (found _g1_old). Cleaning up...")
-            # Clean up any leftover temp columns from a previous failed run
-            for col in ['_g1_old', '_g2_old', '_g3_old', '_g4_old', '_g5_old']:
-                try:
-                    db.execute(text(f"ALTER TABLE scores DROP COLUMN IF EXISTS {col}"))
-                    db.commit()
-                except Exception:
-                    db.rollback()
-            logger.info("Cleanup done, proceeding with migration.")
+            logger.info("Migration v2 already applied (_migrated_v2 found). Skipping.")
+            # Still recalculate total_score for safety
+            db.execute(text("""
+                UPDATE scores SET total_score =
+                    COALESCE(game1_score, 0) + COALESCE(game2_score, 0) +
+                    COALESCE(game3_score, 0) + COALESCE(game4_score, 0) + COALESCE(game5_score, 0)
+            """))
+            db.commit()
+            return
+
+        # ── Clean up any leftover temp columns from a previous failed run ─
+        for col in ['_g1_old', '_g2_old', '_g3_old', '_g4_old', '_g5_old']:
+            try:
+                db.execute(text(f"ALTER TABLE scores DROP COLUMN IF EXISTS {col}"))
+                db.commit()
+            except Exception:
+                db.rollback()
 
         # Step 1: Check current column state
         result = db.execute(text("""
@@ -48,16 +61,7 @@ def run_migration():
         logger.info("Existing game score columns: %s", existing_cols)
 
         if 'game5_score' not in existing_cols:
-            # Already migrated? Check if game5_score exists
-            logger.info("No game5_score column found. Migration may already be complete.")
-            # Still recalculate total
-            db.execute(text("""
-                UPDATE scores SET total_score =
-                    COALESCE(game1_score, 0) + COALESCE(game2_score, 0) +
-                    COALESCE(game3_score, 0) + COALESCE(game4_score, 0) + COALESCE(game5_score, 0)
-            """))
-            db.commit()
-            logger.info("Total scores recalculated.")
+            logger.info("No game5_score column found — schema may be incomplete. Aborting.")
             return
 
         logger.info("=== Starting game score renumbering migration ===")
@@ -105,7 +109,12 @@ def run_migration():
         db.execute(text("ALTER TABLE scores DROP COLUMN _g4_old"))
         db.execute(text("ALTER TABLE scores DROP COLUMN _g5_old"))
         db.commit()
-        logger.info("Temp columns _gX_old dropped. Migration complete!")
+        logger.info("Temp columns _gX_old dropped.")
+
+        # Step 7: Set idempotency marker so migration never runs again
+        db.execute(text("ALTER TABLE scores ADD COLUMN _migrated_v2 BOOLEAN DEFAULT TRUE"))
+        db.commit()
+        logger.info("Migration complete! _migrated_v2 flag set.")
 
         # Step 7: Verify
         count = db.execute(text("SELECT COUNT(*) FROM scores")).scalar()
