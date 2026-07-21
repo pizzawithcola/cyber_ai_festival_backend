@@ -13,8 +13,32 @@ env:
   CONTAINER_NAME: cyber-ai-festival-backend
 
 jobs:
-  build-and-deploy:
+  check-creds:
     runs-on: ubuntu-latest
+    outputs:
+      has-creds: ${{ steps.check.outputs.has-creds }}
+    steps:
+      - name: Check if AWS credentials are available
+        id: check
+        run: |
+          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "has-creds=true" >> $GITHUB_OUTPUT
+            echo "✅ AWS credentials found"
+          else
+            echo "has-creds=false" >> $GITHUB_OUTPUT
+            echo "::warning::AWS credentials missing! Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in GitHub Secrets."
+            echo "::warning::Go to: Settings → Secrets and variables → Actions → New repository secret"
+          fi
+
+  build-and-deploy:
+    needs: check-creds
+    if: needs.check-creds.outputs.has-creds == 'true'
+    runs-on: ubuntu-latest
+    # OIDC: if you prefer OIDC over static credentials, configure the IAM role
+    # and uncomment these permissions + switch to aws-actions/configure-aws-credentials@v4 with role-to-assume
+    # permissions:
+    #   id-token: write
+    #   contents: read
 
     steps:
       - name: Checkout
@@ -27,11 +51,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Verify ECS service exists
+        id: verify
+        run: |
+          if aws ecs describe-services --cluster $ECS_CLUSTER --services $ECS_SERVICE --query "services[0].status" --output text 2>/dev/null | grep -q ACTIVE; then
+            echo "✅ ECS service $ECS_SERVICE is ACTIVE"
+            echo "service-exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::ECS service '$ECS_SERVICE' not found or not ACTIVE. Infrastructure may need to be recreated."
+            echo "::warning::Deploy CloudFormation: aws cloudformation deploy --template-file infra/cloudformation.yml --stack-name cyber-ai-festival --parameter-overrides ..."
+            echo "service-exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Login to Amazon ECR
+        if: steps.verify.outputs.service-exists == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build, tag, and push image to Amazon ECR
+        if: steps.verify.outputs.service-exists == 'true'
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -44,6 +82,7 @@ jobs:
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
       - name: Update ECS task definition with new image
+        if: steps.verify.outputs.service-exists == 'true'
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
@@ -52,9 +91,21 @@ jobs:
           image: ${{ steps.build-image.outputs.image }}
 
       - name: Deploy to Amazon ECS
+        if: steps.verify.outputs.service-exists == 'true'
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           task-definition: ${{ steps.task-def.outputs.task-definition }}
           service: ${{ env.ECS_SERVICE }}
           cluster: ${{ env.ECS_CLUSTER }}
           wait-for-service-stability: true
+
+      - name: Output ALB DNS for reference
+        if: steps.verify.outputs.service-exists == 'true'
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names cyber-ai-festival-alb --query "LoadBalancers[0].DNSName" --output text 2>/dev/null || echo "NOT_FOUND")
+          echo "============================================"
+          echo "ALB DNS: $ALB_DNS"
+          echo "Update frontend repo GitHub Secrets:"
+          echo "  VITE_API_URL=http://$ALB_DNS"
+          echo "  VITE_WS_URL=ws://$ALB_DNS"
+          echo "============================================"

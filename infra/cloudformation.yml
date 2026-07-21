@@ -1,0 +1,513 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Cyber AI Festival - Complete Infrastructure
+  Creates: ALB, ECS Fargate Service, CloudFront, S3 (Frontend), Security Groups
+  Region: ap-south-1
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::Parameter
+    Description: Existing VPC ID
+    Default: vpc-0dda76b286c45fc27
+
+  PublicSubnet1:
+    Type: AWS::EC2::Parameter
+    Description: Public Subnet 1 for ALB
+
+  PublicSubnet2:
+    Type: AWS::EC2::Parameter
+    Description: Public Subnet 2 for ALB
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Parameter
+    Description: Private Subnet 1 for ECS
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Parameter
+    Description: Private Subnet 2 for ECS
+
+  DatabaseUrl:
+    Type: String
+    Description: RDS PostgreSQL connection string
+    NoEcho: true
+
+  ApiKey:
+    Type: String
+    Description: API Key for authentication
+    NoEcho: true
+
+  DeepseekApiKey:
+    Type: String
+    Description: DeepSeek API Key
+    NoEcho: true
+
+  S3BucketName:
+    Type: String
+    Description: S3 bucket name for frontend static files
+    Default: cyber-ai-festival-frontend
+
+  CertificateArn:
+    Type: String
+    Description: ACM Certificate ARN for HTTPS (optional, leave empty to skip)
+    Default: ''
+
+Resources:
+  # ─── Security Groups ──────────────────────────────────────────────────────────
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cyber-ai-festival-alb-sg
+      GroupDescription: ALB security group - allows HTTP/HTTPS from internet
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cyber-ai-festival-ecs-sg
+      GroupDescription: ECS security group - allows traffic from ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8848
+          ToPort: 8848
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  # ─── Application Load Balancer ────────────────────────────────────────────────
+  Alb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: cyber-ai-festival-alb
+      Scheme: internet-facing
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+      Type: application
+      IpAddressType: ipv4
+
+  AlbHttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlbTargetGroup
+
+  AlbHttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCertificate
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlbTargetGroup
+
+  AlbTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cyber-ai-festival-tg
+      Port: 8848
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VpcId
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+
+  # ─── ECS Cluster & Service ────────────────────────────────────────────────────
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: cyber-ai-festival-cluster
+
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: cyber-ai-festival-ecs-task-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecsTaskExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: secrets-manager-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cyber-ai-festival/*
+
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: cyber-ai-festival-task
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '512'
+      Memory: '1024'
+      TaskRoleArn: !Ref EcsTaskRole
+      ExecutionRoleArn: !Ref EcsTaskExecutionRole
+      ContainerDefinitions:
+        - Name: cyber-ai-festival-backend
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cyber-ai-festival-backend:latest
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8848
+              Protocol: tcp
+          Environment:
+            - Name: LOG_LEVEL
+              Value: INFO
+          Secrets:
+            - Name: API_KEY
+              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cyber-ai-festival/api-key
+            - Name: DEEPSEEK_API_KEY
+              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cyber-ai-festival/deepseek-api-key:deepseek_api_key::
+            - Name: DATABASE_URL
+              ValueFrom: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:cyber-ai-festival/db-password
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/cyber-ai-festival-backend
+              awslogs-create-group: 'true'
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  EcsService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: cyber-ai-festival-service
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref EcsTaskDefinition
+      LaunchType: FARGATE
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          SecurityGroups:
+            - !Ref EcsSecurityGroup
+          AssignPublicIp: DISABLED
+      LoadBalancers:
+        - TargetGroupArn: !Ref AlbTargetGroup
+          ContainerName: cyber-ai-festival-backend
+          ContainerPort: 8848
+      HealthCheckGracePeriodSeconds: 60
+
+  # ─── CloudWatch Logs ──────────────────────────────────────────────────────────
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/cyber-ai-festival-backend
+      RetentionInDays: 30
+
+  # ─── S3 Bucket for Frontend ───────────────────────────────────────────────────
+  FrontendS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  # ─── CloudFront Distribution ──────────────────────────────────────────────────
+  CloudFrontOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: OAI for S3 frontend bucket
+
+  FrontendS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendS3Bucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendS3Bucket.Arn}/*
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        PriceClass: PriceClass_All
+        Origins:
+          # S3 Origin for static assets
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendS3Bucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}
+          # ALB Origin for API proxy (only if needed; prefer direct ALB access)
+          - Id: ApiOrigin
+            DomainName: !GetAtt Alb.DNSName
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              OriginSSLProtocols:
+                - TLSv1.2
+              HTTPPort: 80
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: none
+          Compress: true
+        CacheBehaviors:
+          # API proxy behavior - allows ALL HTTP methods
+          - PathPattern: /users/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+                - Authorization
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /scores/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /rankings/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /llm/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /rooms/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /ws/*
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - DELETE
+              - GET
+              - HEAD
+              - OPTIONS
+              - PATCH
+              - POST
+              - PUT
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: true
+              Cookies:
+                Forward: all
+              Headers:
+                - X-API-Key
+                - Content-Type
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+          - PathPattern: /health
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: allow-all
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            CachedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            MinTTL: 0
+            DefaultTTL: 0
+            MaxTTL: 0
+
+Conditions:
+  HasCertificate: !Not [!Equals [!Ref CertificateArn, '']]
+
+Outputs:
+  AlbDnsName:
+    Description: ALB DNS Name
+    Value: !GetAtt Alb.DNSName
+    Export:
+      Name: !Sub ${AWS::StackName}-AlbDns
+
+  CloudFrontDomain:
+    Description: CloudFront Distribution Domain
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub ${AWS::StackName}-CfDomain
+
+  EcsClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref EcsCluster
+
+  EcsServiceName:
+    Description: ECS Service Name
+    Value: !GetAtt EcsService.Name
+
+  S3BucketName:
+    Description: Frontend S3 Bucket Name
+    Value: !Ref FrontendS3Bucket
