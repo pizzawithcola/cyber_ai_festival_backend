@@ -145,7 +145,7 @@ except Exception:
 app = FastAPI(
     title="Cyber AI Festival API",
     description="用户登记、分数上传与 LLM 调用",
-    version="0.1.0",
+    version="0.1.1",
 )
 
 app.add_middleware(
