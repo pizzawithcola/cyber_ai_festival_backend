@@ -127,8 +127,9 @@ Resources:
       TargetType: ip
       VpcId: !Ref VpcId
       HealthCheckPath: /health
-      HealthCheckIntervalSeconds: 30
-      HealthyThresholdCount: 5
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
       UnhealthyThresholdCount: 2
 
   # ─── ECS Cluster & Service ────────────────────────────────────────────────────
@@ -231,7 +232,13 @@ Resources:
         - TargetGroupArn: !Ref AlbTargetGroup
           ContainerName: cyber-ai-festival-backend
           ContainerPort: 8848
-      HealthCheckGracePeriodSeconds: 60
+      HealthCheckGracePeriodSeconds: 30
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
 
   # ─── CloudWatch Logs ──────────────────────────────────────────────────────────
   LogGroup:
