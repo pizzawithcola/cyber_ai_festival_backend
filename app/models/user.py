@@ -12,6 +12,7 @@ class User(Base):
     firstname = Column(String(128), nullable=False)
     lastname = Column(String(128), nullable=False)
     email = Column(String(256), unique=True, index=True, nullable=False)
+    nickname = Column(String(128), unique=True, index=True, nullable=True)
     region = Column(String(128), nullable=True)
     role = Column(String(32), nullable=False, server_default="player")
     created_at = Column(DateTime(timezone=True), server_default=func.now())

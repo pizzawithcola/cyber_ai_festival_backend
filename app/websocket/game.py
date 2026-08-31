@@ -375,7 +375,7 @@ class GameSession:
             }, ensure_ascii=False))
 
         # Broadcast per-question leaderboard after a short delay
-        await asyncio.sleep(2)
+        await asyncio.sleep(7)
         leaderboard = await self._get_leaderboard()
         await self.broadcast({
             "type": "leaderboard",
@@ -385,7 +385,7 @@ class GameSession:
         })
 
         # Wait before next question
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
         if self._force_ended:
             await self._end_game()
             return

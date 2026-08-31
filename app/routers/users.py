@@ -11,7 +11,7 @@ from app.crud import user as crud
 from app.database import get_db
 from app.models.user import User
 from app.models.score import Score
-from app.schemas.user import UserLogin, UserCreate, UserUpdate, UserResponse, UserScoreResponse
+from app.schemas.user import UserLogin, AdminLogin, UserCreate, UserUpdate, UserResponse, UserScoreResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +26,7 @@ class AdminLoginResponse(BaseModel):
 
 
 @router.post("/admin-login", response_model=AdminLoginResponse)
-def admin_login(data: UserLogin, db: Session = Depends(get_db)):
+def admin_login(data: AdminLogin, db: Session = Depends(get_db)):
     """Admin-only login: returns a token only if the user has role='admin'"""
     user = crud.get_user_by_email(db, data.email)
     if not user:
@@ -54,14 +54,15 @@ def admin_login(data: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=UserResponse)
 def login(data: UserLogin, db: Session = Depends(get_db)):
-    user = crud.get_user_by_email(db, data.email)
+    """玩家登录：只用 nickname（大小写不敏感）。老用户无 nickname 时自动补生成。"""
+    if not data.nickname or not data.nickname.strip():
+        raise HTTPException(status_code=401, detail="Nickname is required")
+    user = crud.get_user_by_nickname(db, data.nickname)
     if not user:
-        logger.warning("Login failed: email not found (%s)", data.email)
-        raise HTTPException(status_code=401, detail="Invalid email or firstname")
-    if user.firstname.lower() != data.firstname.lower():
-        logger.warning("Login failed: firstname mismatch for email=%s", data.email)
-        raise HTTPException(status_code=401, detail="Invalid email or firstname")
-    logger.info("Login success: id=%s, email=%s", user.id, user.email)
+        logger.warning("Login failed: nickname not found (%s)", data.nickname)
+        raise HTTPException(status_code=401, detail="Invalid nickname")
+    user = crud.ensure_nickname(db, user)
+    logger.info("Login success: id=%s, nickname=%s", user.id, user.nickname)
     return user
 
 

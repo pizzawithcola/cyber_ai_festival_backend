@@ -73,6 +73,7 @@ class TestCreateUser:
         assert data["firstname"] == "Bob"
         assert data["lastname"] == "Li"
         assert data["email"] == "bob@example.com"
+        assert data["nickname"] == "BobL_001"
         assert data["region"] == "APAC"
         assert "id" in data
         assert "created_at" in data
@@ -98,36 +99,60 @@ class TestCreateUser:
         assert "already exists" in detail["message"]
         assert detail["user_id"] == sample_user["id"]
 
+    def test_create_user_nickname_increments(self, client, sample_user):
+        """同名（firstname + 姓氏首字母相同）时 nickname 数字累加"""
+        assert sample_user["nickname"] == "AliceW_001"
+        resp = client.post("/users/", json={
+            "firstname": "Alice",
+            "lastname": "Wu",
+            "email": "alice2@example.com",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["nickname"] == "AliceW_002"
+
+    def test_create_user_nickname_no_lastname(self, client):
+        """无姓氏时只取 firstname 作为 base"""
+        resp = client.post("/users/", json={
+            "firstname": "Prince",
+            "lastname": "",
+            "email": "prince@example.com",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["nickname"] == "Prince_001"
+
 
 class TestLoginUser:
     def test_login_success(self, client, sample_user):
         resp = client.post("/users/login", json={
-            "email": "alice@example.com",
-            "firstname": "Alice",
+            "nickname": "AliceW_001",
         })
         assert resp.status_code == 200
         assert resp.json()["id"] == sample_user["id"]
         assert resp.json()["email"] == "alice@example.com"
+        assert resp.json()["nickname"] == "AliceW_001"
 
     def test_login_case_insensitive(self, client, sample_user):
-        """firstname 大小写不敏感"""
+        """nickname 大小写不敏感 + trim"""
         resp = client.post("/users/login", json={
-            "email": "alice@example.com",
-            "firstname": "alice",
+            "nickname": "  alicew_001  ",
         })
         assert resp.status_code == 200
 
-    def test_login_wrong_firstname(self, client, sample_user):
+    def test_login_wrong_nickname(self, client, sample_user):
         resp = client.post("/users/login", json={
-            "email": "alice@example.com",
-            "firstname": "Bob",
+            "nickname": "BobL_999",
         })
         assert resp.status_code == 401
 
-    def test_login_email_not_found(self, client):
+    def test_login_nickname_not_found(self, client):
         resp = client.post("/users/login", json={
-            "email": "nobody@example.com",
-            "firstname": "Ghost",
+            "nickname": "GhostG_001",
+        })
+        assert resp.status_code == 401
+
+    def test_login_empty_nickname(self, client):
+        resp = client.post("/users/login", json={
+            "nickname": "  ",
         })
         assert resp.status_code == 401
 

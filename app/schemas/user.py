@@ -3,6 +3,12 @@ from pydantic import BaseModel
 
 
 class UserLogin(BaseModel):
+    """玩家登录：直接用 nickname（如 JamieL_001）"""
+    nickname: str
+
+
+class AdminLogin(BaseModel):
+    """Admin 登录：保留 email + firstname 校验"""
     email: str
     firstname: str
 
@@ -27,6 +33,7 @@ class UserResponse(BaseModel):
     firstname: str
     lastname: str
     email: str
+    nickname: str | None = None
     region: str | None
     role: str = "player"
     created_at: datetime
@@ -39,6 +46,7 @@ class UserScoreResponse(BaseModel):
     firstname: str
     lastname: str
     email: str
+    nickname: str | None = None
     region: str | None
     role: str = "player"
     score_id: int | None
