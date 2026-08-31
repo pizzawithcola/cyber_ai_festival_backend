@@ -42,7 +42,6 @@ logs/
 *.log
 
 # Alembic (migrations embedded in image via copy . .)
-alembic.ini
 
 # Local environment
 .env
