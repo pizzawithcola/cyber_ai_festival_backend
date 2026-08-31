@@ -8,22 +8,20 @@ class UserLogin(BaseModel):
 
 
 class AdminLogin(BaseModel):
-    """Admin 登录：保留 email + firstname 校验"""
-    email: str
+    """Admin 登录：nickname（admin 账号固定为 admin@admin.com）+ firstname 二次校验"""
+    nickname: str
     firstname: str
 
 
 class UserCreate(BaseModel):
     firstname: str
     lastname: str
-    email: str
     region: str | None = None
 
 
 class UserUpdate(BaseModel):
     firstname: str | None = None
     lastname: str | None = None
-    email: str | None = None
     region: str | None = None
     role: str | None = None
 
@@ -32,7 +30,6 @@ class UserResponse(BaseModel):
     id: int
     firstname: str
     lastname: str
-    email: str
     nickname: str | None = None
     region: str | None
     role: str = "player"
@@ -45,7 +42,6 @@ class UserScoreResponse(BaseModel):
     id: int
     firstname: str
     lastname: str
-    email: str
     nickname: str | None = None
     region: str | None
     role: str = "player"

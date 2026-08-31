@@ -27,13 +27,13 @@ class AdminLoginResponse(BaseModel):
 
 @router.post("/admin-login", response_model=AdminLoginResponse)
 def admin_login(data: AdminLogin, db: Session = Depends(get_db)):
-    """Admin-only login: returns a token only if the user has role='admin'"""
-    user = crud.get_user_by_email(db, data.email)
+    """Admin-only login: nickname + firstname 校验，仅 role='admin' 返回 token"""
+    user = crud.get_user_by_nickname(db, data.nickname)
     if not user:
-        logger.warning("Admin login failed: email not found (%s)", data.email)
+        logger.warning("Admin login failed: nickname not found (%s)", data.nickname)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.firstname.lower() != data.firstname.lower():
-        logger.warning("Admin login failed: firstname mismatch for email=%s", data.email)
+        logger.warning("Admin login failed: firstname mismatch for nickname=%s", data.nickname)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if user.role != "admin":
         logger.warning("Admin login failed: user %s does not have admin role", user.id)
@@ -43,7 +43,7 @@ def admin_login(data: AdminLogin, db: Session = Depends(get_db)):
     token_payload = base64.b64encode(
         json.dumps({"uid": user.id, "role": user.role, "ts": int(time.time())}).encode()
     ).decode()
-    logger.info("Admin login success: id=%s, email=%s", user.id, user.email)
+    logger.info("Admin login success: id=%s, nickname=%s", user.id, user.nickname)
     return AdminLoginResponse(
         token=token_payload,
         user_id=user.id,
@@ -68,16 +68,9 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=UserResponse)
 def create_user(data: UserCreate, db: Session = Depends(get_db)):
-    existing = crud.get_user_by_email(db, data.email)
-    if existing:
-        logger.warning("User already exists: email=%s, id=%s", data.email, existing.id)
-        raise HTTPException(
-            status_code=409,
-            detail={"message": "User with this email already exists", "user_id": existing.id},
-        )
-    logger.info("Creating user: %s %s (%s)", data.firstname, data.lastname, data.email)
+    logger.info("Creating user: %s %s", data.firstname, data.lastname)
     user = crud.create_user(db, data)
-    logger.info("User created: id=%s", user.id)
+    logger.info("User created: id=%s, nickname=%s", user.id, user.nickname)
     return user
 
 
@@ -93,7 +86,7 @@ def get_all_users_with_scores(db: Session = Depends(get_db)):
         User.id,
         User.firstname,
         User.lastname,
-        User.email,
+        User.nickname,
         User.region,
         User.role,
         Score.user_id.label('score_id'),
@@ -114,7 +107,7 @@ def get_all_users_with_scores(db: Session = Depends(get_db)):
             id=row.id,
             firstname=row.firstname,
             lastname=row.lastname,
-            email=row.email,
+            nickname=row.nickname,
             region=row.region,
             role=row.role or 'player',
             score_id=row.score_id,
@@ -144,14 +137,6 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
     if not user:
         logger.warning("User not found for update: id=%s", user_id)
         raise HTTPException(status_code=404, detail="User not found")
-    if data.email and data.email != user.email:
-        existing = crud.get_user_by_email(db, data.email)
-        if existing:
-            logger.warning("Email already taken: %s (by user id=%s)", data.email, existing.id)
-            raise HTTPException(
-                status_code=409,
-                detail={"message": "Email already taken", "user_id": existing.id},
-            )
     logger.info("Updating user: id=%s", user_id)
     user = crud.update_user(db, user, data)
     logger.info("User updated: id=%s", user.id)

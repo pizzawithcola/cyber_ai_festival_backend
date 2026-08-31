@@ -41,7 +41,7 @@ class RankingEntry(BaseModel):
     user_id: int
     firstname: str
     lastname: str
-    email: str
+    nickname: str | None = None
     region: str | None
     score: float
 
@@ -79,7 +79,7 @@ def get_ranking(
             user_id=user.id,
             firstname=user.firstname,
             lastname=user.lastname,
-            email=user.email,
+            nickname=user.nickname,
             region=user.region,
             score=getattr(score, f"{score_type.value}_score" if score_type != ScoreType.total else "total_score") or 0,
         )
@@ -118,7 +118,7 @@ def get_all_rankings(
                 user_id=user.id,
                 firstname=user.firstname,
                 lastname=user.lastname,
-                email=user.email,
+                nickname=user.nickname,
                 region=user.region,
                 score=getattr(score, col_name) or 0,
             )

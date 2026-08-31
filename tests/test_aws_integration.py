@@ -82,24 +82,23 @@ def cleanup_test_users():
 
 def test_create_user():
     """测试创建用户"""
-    unique_email = f"test_{uuid.uuid4().hex[:8]}@example.com"
+    unique_name = f"Test{uuid.uuid4().hex[:8]}"
     resp = requests.post(
         f"{AWS_API_URL}/users/",
         headers=get_headers(),
         json={
-            "firstname": "Test",
+            "firstname": unique_name,
             "lastname": "User",
-            "email": unique_email,
             "region": "APAC",
         },
         timeout=10,
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["firstname"] == "Test"
-    assert data["email"] == unique_email
+    assert data["firstname"] == unique_name
+    assert data["nickname"] is not None
     test_user_ids.append(data['id'])  # 记录用于清理
-    print(f"✅ Create user: id={data['id']}, email={data['email']}")
+    print(f"✅ Create user: id={data['id']}, nickname={data['nickname']}")
 
 
 def test_list_users():
@@ -114,14 +113,13 @@ def test_list_users():
 def test_user_score_workflow():
     """测试用户和分数的完整流程：创建用户 -> 获取用户 -> 更新分数 -> 获取分数"""
     # 1. 创建用户
-    unique_email = f"workflow_{uuid.uuid4().hex[:8]}@example.com"
+    unique_name = f"Workflow{uuid.uuid4().hex[:8]}"
     create_resp = requests.post(
         f"{AWS_API_URL}/users/",
         headers=get_headers(),
         json={
-            "firstname": "Workflow",
+            "firstname": unique_name,
             "lastname": "Test",
-            "email": unique_email,
             "region": "TEST",
         },
         timeout=10,
@@ -181,37 +179,36 @@ def test_userscores():
 
 
 def test_login():
-    """测试登录功能"""
+    """测试登录功能（nickname）"""
     # 先创建一个用户
-    unique_email = f"login_{uuid.uuid4().hex[:8]}@example.com"
+    unique_name = f"Login{uuid.uuid4().hex[:8]}"
     create_resp = requests.post(
         f"{AWS_API_URL}/users/",
         headers=get_headers(),
         json={
-            "firstname": "Login",
+            "firstname": unique_name,
             "lastname": "Test",
-            "email": unique_email,
         },
         timeout=10,
     )
     assert create_resp.status_code == 200
     user_id = create_resp.json()["id"]
+    nickname = create_resp.json()["nickname"]
     test_user_ids.append(user_id)  # 记录用于清理
 
-    # 测试登录
+    # 测试登录（大小写不敏感）
     resp = requests.post(
         f"{AWS_API_URL}/users/login",
         headers=get_headers(),
         json={
-            "email": unique_email,
-            "firstname": "Login",
+            "nickname": nickname.lower(),
         },
         timeout=10,
     )
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == user_id
-    print(f"✅ Login: user_id={data['id']}")
+    print(f"✅ Login: user_id={data['id']}, nickname={nickname}")
 
 
 def test_update_and_delete_user():

@@ -80,7 +80,6 @@ def sample_user(client):
     resp = client.post("/users/", json={
         "firstname": "Alice",
         "lastname": "Wang",
-        "email": "alice@example.com",
         "region": "MENA",
     })
     assert resp.status_code == 200

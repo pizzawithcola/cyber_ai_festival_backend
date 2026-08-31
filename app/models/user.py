@@ -11,7 +11,6 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     firstname = Column(String(128), nullable=False)
     lastname = Column(String(128), nullable=False)
-    email = Column(String(256), unique=True, index=True, nullable=False)
     nickname = Column(String(128), unique=True, index=True, nullable=True)
     region = Column(String(128), nullable=True)
     role = Column(String(32), nullable=False, server_default="player")

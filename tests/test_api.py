@@ -65,39 +65,25 @@ class TestCreateUser:
         resp = client.post("/users/", json={
             "firstname": "Bob",
             "lastname": "Li",
-            "email": "bob@example.com",
             "region": "APAC",
         })
         assert resp.status_code == 200
         data = resp.json()
         assert data["firstname"] == "Bob"
         assert data["lastname"] == "Li"
-        assert data["email"] == "bob@example.com"
         assert data["nickname"] == "BobL_001"
         assert data["region"] == "APAC"
         assert "id" in data
         assert "created_at" in data
 
     def test_create_user_minimal(self, client):
-        """region 可选"""
+        """region 可选、无需 email"""
         resp = client.post("/users/", json={
             "firstname": "Charlie",
             "lastname": "Doe",
-            "email": "charlie@example.com",
         })
         assert resp.status_code == 200
         assert resp.json()["region"] is None
-
-    def test_create_user_duplicate_email(self, client, sample_user):
-        resp = client.post("/users/", json={
-            "firstname": "Dup",
-            "lastname": "User",
-            "email": "alice@example.com",
-        })
-        assert resp.status_code == 409
-        detail = resp.json()["detail"]
-        assert "already exists" in detail["message"]
-        assert detail["user_id"] == sample_user["id"]
 
     def test_create_user_nickname_increments(self, client, sample_user):
         """同名（firstname + 姓氏首字母相同）时 nickname 数字累加"""
@@ -105,7 +91,6 @@ class TestCreateUser:
         resp = client.post("/users/", json={
             "firstname": "Alice",
             "lastname": "Wu",
-            "email": "alice2@example.com",
         })
         assert resp.status_code == 200
         assert resp.json()["nickname"] == "AliceW_002"
@@ -115,7 +100,6 @@ class TestCreateUser:
         resp = client.post("/users/", json={
             "firstname": "Prince",
             "lastname": "",
-            "email": "prince@example.com",
         })
         assert resp.status_code == 200
         assert resp.json()["nickname"] == "Prince_001"
@@ -128,7 +112,6 @@ class TestLoginUser:
         })
         assert resp.status_code == 200
         assert resp.json()["id"] == sample_user["id"]
-        assert resp.json()["email"] == "alice@example.com"
         assert resp.json()["nickname"] == "AliceW_001"
 
     def test_login_case_insensitive(self, client, sample_user):
@@ -161,7 +144,7 @@ class TestGetUser:
     def test_get_user(self, client, sample_user):
         resp = client.get(f"/users/{sample_user['id']}")
         assert resp.status_code == 200
-        assert resp.json()["email"] == "alice@example.com"
+        assert resp.json()["nickname"] == "AliceW_001"
 
     def test_get_user_not_found(self, client):
         resp = client.get("/users/9999")
@@ -169,27 +152,12 @@ class TestGetUser:
 
 
 class TestUpdateUser:
-    def test_update_user_partial(self, client, sample_user):
+    def test_update_user_region(self, client, sample_user):
         """只更新 region"""
         resp = client.put(f"/users/{sample_user['id']}", json={"region": "EU"})
         assert resp.status_code == 200
         assert resp.json()["region"] == "EU"
         assert resp.json()["firstname"] == "Alice"  # 其他字段不变
-
-    def test_update_user_email(self, client, sample_user):
-        resp = client.put(f"/users/{sample_user['id']}", json={"email": "new@example.com"})
-        assert resp.status_code == 200
-        assert resp.json()["email"] == "new@example.com"
-
-    def test_update_user_email_conflict(self, client, sample_user):
-        """更新 email 时与其他用户冲突"""
-        client.post("/users/", json={
-            "firstname": "Bob",
-            "lastname": "Li",
-            "email": "bob@example.com",
-        })
-        resp = client.put(f"/users/{sample_user['id']}", json={"email": "bob@example.com"})
-        assert resp.status_code == 409
 
     def test_update_user_not_found(self, client):
         resp = client.put("/users/9999", json={"firstname": "Ghost"})
@@ -226,7 +194,6 @@ class TestListUsers:
             client.post("/users/", json={
                 "firstname": f"User{i}",
                 "lastname": "Test",
-                "email": f"user{i}@example.com",
             })
         resp = client.get("/users/?skip=2&limit=2")
         assert resp.status_code == 200
@@ -250,7 +217,7 @@ class TestGetAllUsersWithScores:
         assert user["id"] == sample_user["id"]
         assert user["firstname"] == "Alice"
         assert user["lastname"] == "Wang"
-        assert user["email"] == "alice@example.com"
+        assert user["nickname"] == "AliceW_001"
         assert user["region"] == "MENA"
         # Score ID should be the user ID in 1:1 relationship
         assert user["score_id"] == sample_user["id"]
@@ -283,7 +250,7 @@ class TestGetAllUsersWithScores:
         assert user["id"] == sample_user["id"]
         assert user["firstname"] == "Alice"
         assert user["lastname"] == "Wang"
-        assert user["email"] == "alice@example.com"
+        assert user["nickname"] == "AliceW_001"
         assert user["region"] == "MENA"
         # Score ID should be the user ID
         assert user["score_id"] == sample_user["id"]
@@ -301,7 +268,6 @@ class TestGetAllUsersWithScores:
         user1 = client.post("/users/", json={
             "firstname": "Alice",
             "lastname": "Wang",
-            "email": "alice@example.com",
             "region": "MENA"
         }).json()
         
@@ -315,7 +281,6 @@ class TestGetAllUsersWithScores:
         user2 = client.post("/users/", json={
             "firstname": "Bob",
             "lastname": "Li",
-            "email": "bob@example.com",
             "region": "APAC"
         }).json()
         
@@ -476,20 +441,20 @@ class TestRankings:
         """创建多个用户和分数用于排行榜测试"""
         users = []
         user_scores = [
-            ("Alice", "Wang", "alice@test.com", 90, 80, 170),
-            ("Bob", "Li", "bob@test.com", 70, 95, 165),
-            ("Charlie", "Doe", "charlie@test.com", 85, 60, 145),
+            ("Alice", "Wang", 90, 80, 170),
+            ("Bob", "Li", 70, 95, 165),
+            ("Charlie", "Doe", 85, 60, 145),
         ]
         
-        for fn, ln, email, g1, g2, total in user_scores:
+        for fn, ln, g1, g2, total in user_scores:
             u = client.post("/users/", json={
-                "firstname": fn, "lastname": ln, "email": email, "region": "TEST",
+                "firstname": fn, "lastname": ln, "region": "TEST",
             }).json()
             users.append(u)
         
         # Update scores after users are created (since scores are auto-created)
         # total_score will be auto-calculated from game scores
-        for i, (fn, ln, email, g1, g2, total) in enumerate(user_scores):
+        for i, (fn, ln, g1, g2, total) in enumerate(user_scores):
             client.put(f"/scores/{users[i]['id']}", json={
                 "game1_score": g1,
                 "game2_score": g2,

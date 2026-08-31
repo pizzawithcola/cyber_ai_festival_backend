@@ -36,11 +36,14 @@ def run_migration():
             print("  ✓ 'role' column added with default 'player'.")
 
 
+ADMIN_NICKNAME = "admin@admin.com"
+
+
 def create_admin():
-    """Create admin account if it doesn't exist"""
+    """Create admin account if it doesn't exist (identified by nickname)"""
     db = SessionLocal()
     try:
-        existing = db.query(User).filter(User.email == "admin@admin.com").first()
+        existing = db.query(User).filter(User.nickname == ADMIN_NICKNAME).first()
         if existing:
             print(f"  → Admin account already exists (id={existing.id}), updating role...")
             existing.role = "admin"
@@ -51,7 +54,7 @@ def create_admin():
         admin = User(
             firstname="admin",
             lastname="account",
-            email="admin@admin.com",
+            nickname=ADMIN_NICKNAME,
             region="United Kingdom",
             role="admin",
         )
@@ -70,7 +73,7 @@ def create_admin():
         )
         db.add(score)
         db.commit()
-        print(f"  ✓ Admin account created (id={admin.id}, email=admin@admin.com, role=admin).")
+        print(f"  ✓ Admin account created (id={admin.id}, nickname={ADMIN_NICKNAME}, role=admin).")
     finally:
         db.close()
 
