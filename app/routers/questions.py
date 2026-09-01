@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.room import Question
+from app.models.room import Question, PlayerAnswer
 from app.schemas.question import QuestionCreate, QuestionUpdate, QuestionResponse
 
 logger = logging.getLogger(__name__)
@@ -85,8 +85,10 @@ def update_question(question_id: int, data: QuestionUpdate, db: Session = Depend
 
 @router.delete("/{question_id}")
 def delete_question(question_id: int, db: Session = Depends(get_db)):
-    """Delete a question by id."""
+    """Delete a question by id (also removes its answer history)."""
     question = _get_question(db, question_id)
+    # Remove answer history first to satisfy the FK constraint
+    db.query(PlayerAnswer).filter(PlayerAnswer.question_id == question_id).delete()
     db.delete(question)
     db.commit()
     logger.info("Question deleted: id=%s", question_id)

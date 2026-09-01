@@ -3,6 +3,10 @@ Question bank CRUD endpoint tests (Ultimate Showdown).
 """
 import pytest
 
+from app.models.room import Room, RoomPlayer, PlayerAnswer
+from tests.conftest import TestSessionLocal
+import pytest
+
 
 def make_question_payload(**overrides):
     payload = {
@@ -124,3 +128,39 @@ class TestQuestionDelete:
     def test_delete_question_404(self, client):
         resp = client.delete("/questions/99999")
         assert resp.status_code == 404
+
+
+class TestQuestionDeleteWithAnswers:
+    """删除被 player_answers 引用的题目（外键场景）"""
+
+    def test_delete_question_with_answer_history(self, client):
+        # 1. 通过 API 创建题目
+        q = client.post("/questions/", json=make_question_payload()).json()
+        qid = q["id"]
+
+        # 2. 直接写库：Room → RoomPlayer → PlayerAnswer（引用该题）
+        db = TestSessionLocal()
+        try:
+            room = Room(code="9999", admin_id=1, status="waiting")
+            db.add(room)
+            db.commit()
+            db.refresh(room)
+            rp = RoomPlayer(room_id=room.id, user_id=1, player_name="Test")
+            db.add(rp)
+            db.commit()
+            db.refresh(rp)
+            pa = PlayerAnswer(
+                player_id=rp.id, question_id=qid,
+                chosen_option="A", is_correct=True,
+                answer_time_ms=100, score_earned=100,
+            )
+            db.add(pa)
+            db.commit()
+        finally:
+            db.close()
+
+        # 3. 删除该题 —— 应级联清理 answer 并成功，而非 500
+        resp = client.delete(f"/questions/{qid}")
+        assert resp.status_code == 200
+        assert resp.json()["question_id"] == qid
+        assert client.get(f"/questions/{qid}").status_code == 404

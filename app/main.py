@@ -138,21 +138,11 @@ try:
         qcount = r.fetchone()[0]
         if qcount == 0:
             questions_data = [
-                ("What does GAN stand for in AI?", "General Adaptive Network", "Generative Adversarial Network", "Graphical Analysis Node", "Gradient Adjusted Neuron", "B", 20, "AI Basics"),
-                ("Which type of AI attack tricks a model by feeding it slightly altered input data?", "Phishing attack", "Adversarial attack", "Brute force attack", "Man-in-the-middle attack", "B", 20, "AI Security"),
                 ("What is a deepfake?", "A very realistic AI-generated fake image or video", "A type of blockchain transaction", "A deep-learning training technique", "A type of firewall", "A", 20, "DeepFake"),
-                ("What is the primary risk of AI hallucination?", "AI models become too fast", "AI generates false but convincing information", "AI deletes its training data", "AI refuses to answer questions", "B", 20, "AI Risks"),
                 ("Which company developed ChatGPT?", "Google", "Meta", "OpenAI", "Microsoft", "C", 15, "AI Industry"),
-                ("What does the term 'training data' refer to in machine learning?", "Data used to test the model's accuracy", "Data used to teach the model patterns and relationships", "Data the model has never seen before", "Data that is manually curated by humans only", "B", 20, "AI Basics"),
                 ("Which of these is a real cybersecurity concern with AI models?", "Model inversion attacks that reveal training data", "AI models developing consciousness", "AI models needing food and water", "AI models refusing to process numbers", "A", 20, "AI Security"),
-                ("What is 'prompt injection' in the context of LLMs?", "A method to speed up AI responses", "A technique where malicious input overrides the model's system instructions", "A way to install software on the model", "A type of hardware attack", "B", 25, "AI Security"),
-                ("Which of these is NOT a common type of phishing attack?", "Spear phishing", "Whaling", "Neural phishing", "Clone phishing", "C", 20, "Phishing"),
-                ("What is the purpose of a CAPTCHA?", "To encrypt user passwords", "To distinguish humans from bots", "To compress web page data", "To track user location", "B", 15, "Web Security"),
-                ("What is zero-trust security architecture?", "Trust no one, verify nothing", "Never trust, always verify every access request", "Only trust internal network traffic", "Disable all security measures", "B", 25, "Cyber Security"),
                 ("What does NLP stand for in AI?", "Neural Learning Protocol", "Natural Language Processing", "Network Layer Protection", "Non-Linear Programming", "B", 15, "AI Basics"),
                 ("What is the biggest risk of using public AI models with sensitive data?", "The model might run out of memory", "Data could be used to train future versions of the model", "The model becomes slower over time", "The model requires a faster internet connection", "B", 20, "AI Risks"),
-                ("What is social engineering in cybersecurity?", "Building social networks for engineers", "Manipulating people into revealing confidential information", "Using social media for marketing", "A type of software engineering methodology", "B", 15, "Cyber Security"),
-                ("What is RAG (Retrieval-Augmented Generation)?", "A technique that combines retrieval of external data with text generation", "A method to delete old AI models", "A type of computer hardware", "A programming language for AI", "A", 25, "AI Techniques"),
             ]
             for q in questions_data:
                 conn.execute(text(
