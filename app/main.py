@@ -74,9 +74,32 @@ logger = logging.getLogger("app")
 try:
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ready")
+except Exception:
+    logger.warning("Database not reachable at startup (will retry on first request): %s", traceback.format_exc())
 
-    # ─── Auto-migration: Add role column if not exists ─────────────────────────
+# ─── Auto-migration: Add score column to questions ─────────────────────────────
+# Runs independently so it is never skipped by failures in the legacy steps below.
+try:
     with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='questions' AND column_name='score'"
+        ))
+        if not r.fetchone():
+            conn.execute(text(
+                "ALTER TABLE questions ADD COLUMN score INTEGER NOT NULL DEFAULT 1000"
+            ))
+            conn.commit()
+            logger.info("Migration: Added 'score' column to questions table")
+        else:
+            logger.info("Migration: 'score' column already exists")
+except Exception:
+    logger.warning("Migration: failed to add 'score' column to questions: %s", traceback.format_exc())
+
+# ─── Legacy startup migrations (role / admin / question seed) ──────────────────
+try:
+    with engine.connect() as conn:
+        # ─── Auto-migration: Add role column if not exists ─────────────────
         r = conn.execute(text(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name='users' AND column_name='role'"
@@ -90,16 +113,16 @@ try:
         else:
             logger.info("Migration: 'role' column already exists")
 
-        # ─── Create admin account if not exists ────────────────────────────────
-        r = conn.execute(text("SELECT id FROM users WHERE email = 'admin@admin.com'"))
+        # ─── Create admin account if not exists (email column was dropped) ────
+        r = conn.execute(text("SELECT id FROM users WHERE firstname = 'admin' AND role = 'admin'"))
         if not r.fetchone():
             conn.execute(text(
-                "INSERT INTO users (firstname, lastname, email, region, role) "
-                "VALUES ('admin', 'account', 'admin@admin.com', 'United Kingdom', 'admin')"
+                "INSERT INTO users (firstname, lastname, region, role) "
+                "VALUES ('admin', 'account', 'United Kingdom', 'admin')"
             ))
             conn.commit()
             # Get the new admin user id to create score record
-            r = conn.execute(text("SELECT id FROM users WHERE email = 'admin@admin.com'"))
+            r = conn.execute(text("SELECT id FROM users WHERE firstname = 'admin' AND role = 'admin'"))
             admin_id = r.fetchone()[0]
             conn.execute(text(
                 "INSERT INTO scores (user_id, game1_score, game2_score, game3_score, game4_score, game5_score, total_score) "
@@ -109,20 +132,6 @@ try:
             logger.info("Migration: Created admin account (id=%s)", admin_id)
         else:
             logger.info("Migration: Admin account already exists")
-
-        # ─── Auto-migration: Add score column to questions if not exists ────
-        r = conn.execute(text(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name='questions' AND column_name='score'"
-        ))
-        if not r.fetchone():
-            conn.execute(text(
-                "ALTER TABLE questions ADD COLUMN score INTEGER NOT NULL DEFAULT 1000"
-            ))
-            conn.commit()
-            logger.info("Migration: Added 'score' column to questions table")
-        else:
-            logger.info("Migration: 'score' column already exists")
 
         # ─── Auto-seed question bank if empty ───────────────────────────────
         r = conn.execute(text("SELECT COUNT(*) FROM questions"))
