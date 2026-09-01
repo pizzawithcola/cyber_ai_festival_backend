@@ -17,6 +17,8 @@ class Question(Base):
     correct_option = Column(String(1), nullable=False)  # A/B/C/D
     time_limit = Column(Integer, nullable=False, default=20)
     category = Column(String(64), nullable=True, default="general")
+    # Base points awarded for a correct answer (default matches legacy scoring of 1000)
+    score = Column(Integer, nullable=False, default=1000)
 
 
 class Room(Base):

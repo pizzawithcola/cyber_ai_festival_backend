@@ -139,6 +139,46 @@ Base URL: `http://127.0.0.1:8848` (本地) 或 `http://{ALB_DNS}` (AWS)
 | Rankings | GET | `/rankings/{score_type}` | 单个排行榜 |
 | Rankings | GET | `/rankings/` | 全部排行榜 |
 | LLM | POST | `/llm/chat` | LLM 对话 |
+| Rooms | GET | `/rooms/{code}/status` | 房间状态 |
+| Questions | GET | `/questions/` | 题库列表 |
+| Questions | POST | `/questions/` | 新增题目 |
+| Questions | GET | `/questions/{question_id}` | 获取单题 |
+| Questions | PUT | `/questions/{question_id}` | 更新题目 |
+| Questions | DELETE | `/questions/{question_id}` | 删除题目 |
+
+---
+
+### Question Bank（Ultimate Showdown 题库管理）
+
+题目字段：`text`（题干）、`option_a~d`（四个选项）、`correct_option`（A/B/C/D，大小写均可，自动转大写）、`time_limit`（秒，默认 20）、`category`（分类，默认 general）、`score`（答对基础分值，默认 1000）。
+
+#### `GET /questions/` — 题库列表
+
+```bash
+curl -H "X-API-Key: $API_KEY" "http://127.0.0.1:8848/questions/"
+```
+
+#### `POST /questions/` — 新增题目
+
+```bash
+curl -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "text": "What does RAG stand for?",
+    "option_a": "Random Access Graph",
+    "option_b": "Retrieval-Augmented Generation",
+    "option_c": "Recursive Agent Gateway",
+    "option_d": "Realtime Analytics Group",
+    "correct_option": "B",
+    "time_limit": 20,
+    "category": "AI Techniques",
+    "score": 1500
+  }' \
+  "http://127.0.0.1:8848/questions/"
+```
+
+#### `PUT /questions/{question_id}` — 更新题目（部分字段即可）
+
+#### `DELETE /questions/{question_id}` — 删除题目
 
 ---
 

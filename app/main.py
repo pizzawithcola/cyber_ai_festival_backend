@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.routers import users, scores, rankings, llm
 from app.routers import rooms as rooms_router
+from app.routers import questions as questions_router
 from app.websocket.game import websocket_endpoint
 
 # Ensure all models are imported so Base.metadata knows about them
@@ -109,6 +110,20 @@ try:
         else:
             logger.info("Migration: Admin account already exists")
 
+        # ─── Auto-migration: Add score column to questions if not exists ────
+        r = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='questions' AND column_name='score'"
+        ))
+        if not r.fetchone():
+            conn.execute(text(
+                "ALTER TABLE questions ADD COLUMN score INTEGER NOT NULL DEFAULT 1000"
+            ))
+            conn.commit()
+            logger.info("Migration: Added 'score' column to questions table")
+        else:
+            logger.info("Migration: 'score' column already exists")
+
         # ─── Auto-seed question bank if empty ───────────────────────────────
         r = conn.execute(text("SELECT COUNT(*) FROM questions"))
         qcount = r.fetchone()[0]
@@ -201,6 +216,7 @@ app.include_router(scores.router, prefix="/scores", tags=["scores"], dependencie
 app.include_router(rankings.router, prefix="/rankings", tags=["rankings"], dependencies=[Depends(verify_api_key)])
 app.include_router(llm.router, prefix="/llm", tags=["llm"], dependencies=[Depends(verify_api_key)])
 app.include_router(rooms_router.router, prefix="/rooms", tags=["rooms"], dependencies=[Depends(verify_api_key)])
+app.include_router(questions_router.router, prefix="/questions", tags=["questions"], dependencies=[Depends(verify_api_key)])
 
 
 # --------------- 请求日志中间件 ---------------

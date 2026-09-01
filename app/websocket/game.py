@@ -178,6 +178,7 @@ class GameSession:
                     ],
                     "correct": q.correct_option,
                     "time_limit": q.time_limit,
+                    "score": q.score,
                 }
                 for q in selected
             ]
@@ -236,6 +237,7 @@ class GameSession:
             "text": q["text"],
             "options": q["options"],
             "time_limit": q["time_limit"],
+            "score": q.get("score", 1000),
         }
         await self.broadcast(question_msg)
 
@@ -312,7 +314,7 @@ class GameSession:
                 score = 0
                 if is_correct:
                     speed_bonus = int((1 - ans_time / time_limit) * 500)
-                    score = 1000 + speed_bonus
+                    score = q.get("score", 1000) + speed_bonus
 
                 ans["correct"] = is_correct
                 ans["score"] = score
