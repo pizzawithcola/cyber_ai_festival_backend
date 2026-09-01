@@ -2,22 +2,22 @@
 Shared constants for the Ultimate Showdown game.
 """
 # The 6 question categories used for the balanced (per-category) draw:
-#   4 theme games + general AI + super-hard bonus questions.
+#   general AI + 4 theme categories (from the curated quiz doc) + super-hard bonus.
 GAME_CATEGORIES = [
-    "hallucinate",       # AI Hallucination
-    "datashadows",       # Data Shadows
-    "retaildemolition",  # Retail Demolition
+    "ai",                # General AI (the 5 simple AI questions)
+    "hallucination",     # AI Hallucination
+    "data",              # Data Privacy / Data Shadows
+    "agent",             # Agentic AI & Online Shopping
     "phishing",          # Phishing
-    "ai",                # General AI
-    "bonus",             # Super-hard bonus questions
+    "bonus",             # Super-hard bonus questions (added later)
 ]
 
 # Display labels for the frontend
 GAME_CATEGORY_LABELS = {
-    "hallucinate": "AI Hallucination",
-    "datashadows": "Data Shadows",
-    "retaildemolition": "Retail Demolition",
-    "phishing": "Phishing",
     "ai": "AI General",
+    "hallucination": "Hallucination",
+    "data": "Data",
+    "agent": "Agent",
+    "phishing": "Phishing",
     "bonus": "Bonus (Hard)",
 }

@@ -22,6 +22,18 @@ class TestCreateRoomBalance:
         # question_count is the sum of the balance
         assert room["question_count"] == 5
 
+    def test_create_room_with_new_category_balance(self, client):
+        """New curated categories (hallucination/data/agent/phishing) are accepted."""
+        resp = client.post("/rooms/", json={
+            "question_count": 10,
+            "balance": {"hallucination": 1, "data": 1, "agent": 1, "phishing": 2},
+        })
+        assert resp.status_code == 200
+        code = resp.json()["room_code"]
+        rooms = client.get("/rooms/").json()
+        room = next(r for r in rooms if r["room_code"] == code)
+        assert room["question_count"] == 5
+
     def test_create_room_balance_filters_unknown_categories(self, client):
         resp = client.post("/rooms/", json={
             "question_count": 10,
