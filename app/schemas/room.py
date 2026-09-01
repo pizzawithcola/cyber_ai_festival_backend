@@ -26,6 +26,8 @@ class QuestionResponse(BaseModel):
 # ─── Room ──────────────────────────────────────────────────────────────────────
 class CreateRoomRequest(BaseModel):
     question_count: int = Field(default=10, ge=1, le=30)
+    # Per-category question balance, e.g. {"phishing": 2, "ai": 2}. Empty/None = random from all.
+    balance: dict[str, int] | None = None
 
 
 class CreateRoomResponse(BaseModel):

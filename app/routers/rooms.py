@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.room import Room, RoomPlayer, Question
+from app.constants import GAME_CATEGORIES
 from app.schemas.room import (
     CreateRoomRequest,
     CreateRoomResponse,
@@ -41,11 +42,32 @@ def _generate_room_code(db: Session) -> str:
 def create_room(data: CreateRoomRequest, db: Session = Depends(get_db)):
     """Admin creates a new game room. Returns a 4-digit room code."""
     code = _generate_room_code(db)
-    room = Room(code=code, admin_id=1, status="waiting", question_count=data.question_count)
+    # Validate & sanitize the per-category balance (only known categories, count >= 0)
+    balance = None
+    if data.balance:
+        cleaned = {
+            k: int(v)
+            for k, v in data.balance.items()
+            if k in GAME_CATEGORIES and int(v) > 0
+        }
+        if cleaned:
+            balance = cleaned
+    # If a balance is provided, the total question count = sum of the balance
+    question_count = sum(balance.values()) if balance else data.question_count
+    room = Room(
+        code=code,
+        admin_id=1,
+        status="waiting",
+        question_count=question_count,
+        balance=balance,
+    )
     db.add(room)
     db.commit()
     db.refresh(room)
-    logger.info("Room created: code=%s, question_count=%d", code, data.question_count)
+    logger.info(
+        "Room created: code=%s, question_count=%d, balance=%s",
+        code, question_count, balance,
+    )
     return CreateRoomResponse(room_code=code, admin_id=room.admin_id)
 
 

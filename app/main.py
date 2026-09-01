@@ -96,6 +96,22 @@ try:
 except Exception:
     logger.warning("Migration: failed to add 'score' column to questions: %s", traceback.format_exc())
 
+# ─── Auto-migration: Add balance column to rooms (per-category game balance) ───
+try:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='rooms' AND column_name='balance'"
+        ))
+        if not r.fetchone():
+            conn.execute(text("ALTER TABLE rooms ADD COLUMN balance JSON"))
+            conn.commit()
+            logger.info("Migration: Added 'balance' column to rooms table")
+        else:
+            logger.info("Migration: 'balance' column already exists")
+except Exception:
+    logger.warning("Migration: failed to add 'balance' column to rooms: %s", traceback.format_exc())
+
 # ─── Legacy startup migrations (role / admin / question seed) ──────────────────
 try:
     with engine.connect() as conn:

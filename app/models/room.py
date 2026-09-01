@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Text, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -30,6 +30,8 @@ class Room(Base):
     status = Column(String(16), nullable=False, default="waiting")  # waiting / playing / finished
     question_count = Column(Integer, nullable=False, default=10)
     current_question_index = Column(Integer, nullable=False, default=0)
+    # Per-category question balance, e.g. {"phishing": 2, "ai": 2, ...}. Empty = draw from all.
+    balance = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     players = relationship("RoomPlayer", back_populates="room", cascade="all, delete-orphan")

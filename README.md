@@ -182,6 +182,26 @@ curl -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
 
 ---
 
+### Rooms — 配平（balance）
+
+创建房间时可传每个 category 的题目数量，游戏会**按 category 随机抽题**，每局重新随机保证公平。
+
+6 个分类：`hallucinate` / `datashadows` / `retaildemolition` / `phishing` / `ai` / `bonus`
+
+```bash
+curl -X POST -H "X-API-Key: $API_KEY" -H "Content-Type: application/json" \
+  -d '{
+    "question_count": 10,
+    "balance": {"phishing": 2, "ai": 2, "hallucinate": 2, "datashadows": 2, "retaildemolition": 1, "bonus": 1}
+  }' \
+  "http://127.0.0.1:8848/rooms/"
+```
+
+- 传了 `balance` 后，`question_count` 会被设为 balance 各分类之和
+- 未传 `balance`（或空）→ 回退为从全部题库随机抽 `question_count` 道
+
+---
+
 ### Health
 
 #### `GET /health`

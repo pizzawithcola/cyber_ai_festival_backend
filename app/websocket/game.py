@@ -158,14 +158,30 @@ class GameSession:
         # Load questions from DB
         db = SessionLocal()
         try:
+            room = db.query(Room).filter(Room.code == self.room_code).first()
+            balance = (room.balance if room and room.balance else {}) or {}
+
             all_q = (
                 db.query(Question)
                 .order_by(Question.id)
                 .all()
             )
-            if len(all_q) < question_count:
-                question_count = len(all_q)
-            selected = random.sample(all_q, min(question_count, len(all_q)))
+
+            if balance:
+                # Balanced draw: sample `count` random questions from EACH category.
+                # Every game re-samples randomly so the set stays fair per category.
+                selected: list = []
+                for cat, count in balance.items():
+                    if not count or count <= 0:
+                        continue
+                    cat_qs = [q for q in all_q if (q.category or "") == cat]
+                    selected += random.sample(cat_qs, min(count, len(cat_qs)))
+                random.shuffle(selected)
+            else:
+                # Legacy fallback: random sample from the whole bank
+                qc = min(question_count, len(all_q))
+                selected = random.sample(all_q, qc)
+
             self.questions = [
                 {
                     "id": q.id,
@@ -184,7 +200,6 @@ class GameSession:
             ]
 
             # Reset room state in DB
-            room = db.query(Room).filter(Room.code == self.room_code).first()
             if room:
                 room.status = "playing"
                 room.question_count = len(self.questions)
