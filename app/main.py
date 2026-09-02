@@ -184,6 +184,12 @@ try:
                 ("What should you do if you receive an email from an unknown sender asking you to click a link?", "Click it immediately", "Reply with your details", "Ignore or delete it", "Forward it to friends", "C", 20, "phishing"),
                 ("An email claims your bank account will be frozen in 2 hours unless you click a link. What tactic is being used?", "Transparency", "Artificial Intelligence", "Technical Support", "Creating a false sense of urgency", "D", 20, "phishing"),
                 ("What is \"Smishing\"?", "A phishing attack sent via SMS/text message", "A type of computer virus that slows down your internet", "Sharing your password with a friend", "An update to your email application", "A", 20, "phishing"),
+                # ── Bonus (category "bonus") — AI history / frontier trivia ──
+                ("Alan Turing's 1950 paper proposed a famous test for machine intelligence. What is it called?", "The Deep Learning Test", "The Turing Test", "The Chatbot Test", "The Logic Test", "B", 20, "bonus"),
+                ("In 1997, which IBM computer beat world chess champion Garry Kasparov?", "Watson", "AlphaGo", "Deep Blue", "DeepMind", "C", 20, "bonus"),
+                ("In 2011, an IBM system beat two human champions on the US TV quiz show Jeopardy!. What was it called?", "Watson", "Deep Blue", "AlphaGo", "Siri", "A", 20, "bonus"),
+                ("In March 2016, Google DeepMind's AlphaGo beat a legendary Go champion 4 games to 1. Who was the human opponent?", "Lee Sedol", "Ke Jie", "Fan Hui", "Ding Liren", "A", 20, "bonus"),
+                ("Roughly how many parameters did GPT-3 have when OpenAI released it in 2020?", "1.5 billion", "13 billion", "175 billion", "1 trillion", "C", 20, "bonus"),
             ]
             for q in questions_data:
                 conn.execute(text(
