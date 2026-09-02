@@ -124,14 +124,20 @@ def join_room(code: str, data: JoinRoomRequest, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.code == code).first()
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
-    if room.status not in ("waiting", "paused"):
-        raise HTTPException(status_code=400, detail="Game already started or finished")
 
     existing = (
         db.query(RoomPlayer)
         .filter(RoomPlayer.room_id == room.id, RoomPlayer.user_id == data.user_id)
         .first()
     )
+
+    # A player who already joined may re-join while the game is running
+    # (page refresh / WS reconnect) so they can resume the live phase.
+    if room.status not in ("waiting", "paused", "playing"):
+        raise HTTPException(status_code=400, detail="Game already finished")
+    if room.status == "playing" and not existing:
+        raise HTTPException(status_code=400, detail="Game already started")
+
     if existing:
         return JoinRoomResponse(
             player_id=existing.id, room_code=code,

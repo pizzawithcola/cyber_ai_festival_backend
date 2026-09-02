@@ -56,6 +56,7 @@ class GameSession:
         self._pause_event: Optional[asyncio.Event] = None
         self._question_remaining = 0  # remaining seconds when paused
         self._force_ended = False  # set by force_end() to break game loop
+        self.snapshot: Optional[dict] = None  # latest state, replayed to (re)connecting clients
 
     # ─── Pause / Resume / Force-End ───────────────────────────────────────
     def pause(self):
@@ -246,6 +247,7 @@ class GameSession:
         # 3-second countdown
         self.state = "countdown"
         for i in range(3, 0, -1):
+            self.snapshot = {"phase": "countdown", "countdown_value": i}
             await self.broadcast({"type": "countdown", "value": i})
             await asyncio.sleep(1)
 
@@ -279,6 +281,15 @@ class GameSession:
             "multiplier": q.get("multiplier", 1),
         }
         await self.broadcast(question_msg)
+        # Cache current state so reconnecting clients can resume this exact question
+        self.snapshot = {
+            "phase": "question",
+            "question": question_msg,
+            "remaining": q["time_limit"],
+            "answered_count": 0,
+            "is_paused": False,
+            "total_players": len(self.players),
+        }
 
         # Tick loop
         remaining = q["time_limit"]
@@ -295,6 +306,8 @@ class GameSession:
 
             # Check pause — enter pause loop
             if self._paused:
+                self.snapshot["is_paused"] = True
+                self.snapshot["remaining"] = remaining
                 await self.broadcast({"type": "paused", "remaining": remaining})
                 self._question_remaining = remaining
                 # Wait until resumed (or force-ended)
@@ -303,6 +316,8 @@ class GameSession:
                 if self._force_ended:
                     break
                 # Resumed
+                self.snapshot["is_paused"] = False
+                self.snapshot["remaining"] = remaining
                 await self.broadcast({"type": "resumed", "remaining": remaining})
                 self._pause_event = asyncio.Event()
                 self._paused = False
@@ -324,6 +339,9 @@ class GameSession:
                 break
 
             # Broadcast tick
+            self.snapshot["remaining"] = remaining
+            self.snapshot["answered_count"] = len(self.answers)
+            self.snapshot["total_players"] = connected
             await self.broadcast({"type": "tick", "remaining": remaining, "answered_count": len(self.answers), "total_players": connected})
 
         self._pause_event = None
@@ -398,6 +416,28 @@ class GameSession:
         for ans in self.answers.values():
             distribution[ans["option"]] += 1
 
+        # Cache result state so a reconnecting client can resume the result screen.
+        self.snapshot = {
+            "phase": "result",
+            "question": {
+                "type": "question",
+                "question_id": q["id"],
+                "number": self.current_question_idx + 1,
+                "total": len(self.questions),
+                "text": q["text"],
+                "options": q["options"],
+                "time_limit": q["time_limit"],
+                "score": q.get("score", 500),
+                "multiplier": q.get("multiplier", 1),
+            },
+            "correct_option": correct_option,
+            "distribution": distribution,
+            "result_answers": {
+                str(k): {"option": v.get("option"), "correct": v.get("correct"), "score": v.get("score", 0)}
+                for k, v in self.answers.items()
+            },
+        }
+
         # Build player-specific results
         for p in self.players:
             ans = self.answers.get(p.room_player_id)
@@ -426,6 +466,12 @@ class GameSession:
         # Broadcast per-question leaderboard after a short delay
         await asyncio.sleep(7)
         leaderboard = await self._get_leaderboard()
+        self.snapshot = {
+            "phase": "leaderboard",
+            "leaderboard": leaderboard,
+            "question_number": self.current_question_idx + 1,
+            "total_questions": len(self.questions),
+        }
         await self.broadcast({
             "type": "leaderboard",
             "leaderboard": leaderboard,
@@ -472,6 +518,7 @@ class GameSession:
         finally:
             db.close()
 
+        self.snapshot = {"phase": "finished", "leaderboard": leaderboard}
         await self.broadcast({
             "type": "game_over",
             "leaderboard": leaderboard,
@@ -491,6 +538,69 @@ class GameSession:
                 await self.admin.send_text(json.dumps(msg, ensure_ascii=False))
             except Exception:
                 pass
+
+    # ─── Reconnect state replay ────────────────────────────────────────────
+    async def _replay_snapshot(self, ws: WebSocket, role: str):
+        """After a (re)connect, resend the current game state so the client resumes
+        the exact phase instead of desyncing (stuck waiting / wrong question / score).
+
+        The player/admin already received player_count / player_joined; these follow-up
+        messages drive the shared useGameWebSocket state machine to the live phase.
+        """
+        snap = self.snapshot
+        if not snap:
+            return
+        phase = snap.get("phase")
+        try:
+            if phase == "countdown":
+                await ws.send_text(json.dumps({"type": "countdown", "value": snap.get("countdown_value", 3)}, ensure_ascii=False))
+            elif phase == "question":
+                q = snap.get("question") or {}
+                # question payload already excludes the correct answer
+                await ws.send_text(json.dumps(q, ensure_ascii=False))
+                await ws.send_text(json.dumps({
+                    "type": "tick",
+                    "remaining": snap.get("remaining", q.get("time_limit", 0)),
+                    "answered_count": snap.get("answered_count", 0),
+                    "total_players": snap.get("total_players", 0),
+                }, ensure_ascii=False))
+                if snap.get("is_paused"):
+                    await ws.send_text(json.dumps({"type": "paused", "remaining": snap.get("remaining", 0)}, ensure_ascii=False))
+            elif phase == "result":
+                q = snap.get("question") or {}
+                await ws.send_text(json.dumps(q, ensure_ascii=False))
+                if role == "admin":
+                    await ws.send_text(json.dumps({
+                        "type": "question_result",
+                        "correct_option": snap.get("correct_option"),
+                        "distribution": snap.get("distribution", {}),
+                        "answers": snap.get("result_answers", {}),
+                    }, ensure_ascii=False))
+                else:
+                    pc = self.get_player_connection(ws)
+                    ans = snap.get("result_answers", {}).get(str(pc.room_player_id)) if pc else None
+                    await ws.send_text(json.dumps({
+                        "type": "question_result",
+                        "correct_option": snap.get("correct_option"),
+                        "your_option": (ans or {}).get("option"),
+                        "is_correct": bool((ans or {}).get("correct")),
+                        "score_earned": (ans or {}).get("score", 0),
+                        "distribution": snap.get("distribution", {}),
+                    }, ensure_ascii=False))
+            elif phase == "leaderboard":
+                await ws.send_text(json.dumps({
+                    "type": "leaderboard",
+                    "leaderboard": snap.get("leaderboard", []),
+                    "question_number": snap.get("question_number", 0),
+                    "total_questions": snap.get("total_questions", 0),
+                }, ensure_ascii=False))
+            elif phase == "finished":
+                await ws.send_text(json.dumps({
+                    "type": "game_over",
+                    "leaderboard": snap.get("leaderboard", []),
+                }, ensure_ascii=False))
+        except Exception:
+            pass
 
     # ─── Handle incoming messages ──────────────────────────────────────────
     async def handle_admin_message(self, ws: WebSocket, msg: dict):
@@ -587,6 +697,10 @@ async def websocket_endpoint(ws: WebSocket, room_code: str, user_id: int, role: 
             ],
         })
         logger.info("Room %s: player %s (uid=%s) connected", room_code, player_name, user_id)
+
+    # Replay current game state so a freshly connected / reconnected client resumes
+    # the live phase instead of desyncing. (Must run after the player is appended.)
+    await session._replay_snapshot(ws, role)
 
     try:
         while True:

@@ -55,6 +55,17 @@ def setup_database():
 
 
 @pytest.fixture()
+def db_session():
+    """Yields a session on the SAME in-memory engine used by the API dependency
+    override, so tests can seed/modify rows that the endpoints will see."""
+    db = TestSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture()
 def client():
     """TestClient，默认携带正确的 API Key"""
     test_client = TestClient(app)
