@@ -5,7 +5,8 @@ Architecture:
   - One GameSession per room (stored in memory dict).
   - Each WS connection receives a role: "admin" or "player".
   - Admin can START the game; players receive questions and submit answers.
-  - Score = 1000 (correct) + speed_bonus + streak_bonus.
+  - Correct = 500 base + speed (0–500) → 500–1000; wrong = 0.
+  - Bonus questions (x2/x3) multiply the earned score. No streak bonus.
 """
 
 import asyncio
@@ -182,6 +183,27 @@ class GameSession:
                 qc = min(question_count, len(all_q))
                 selected = random.sample(all_q, qc)
 
+            # ── Bonus multiplier: pick up to 2 bonus questions, assign x2/x3,
+            #    and force them to appear as the LAST two questions of the game. ──
+            bonus_qs = [q for q in selected if (q.category or "") == "bonus"]
+            regular_qs = [q for q in selected if (q.category or "") != "bonus"]
+            # multiplier per question id
+            mult: dict[int, int] = {}
+            if len(bonus_qs) >= 2:
+                random.shuffle(bonus_qs)
+                mult[bonus_qs[0].id] = 2
+                mult[bonus_qs[1].id] = 3
+                # extra bonus questions (if any) are treated as regular
+                regular_qs.extend(bonus_qs[2:])
+                bonus_qs = bonus_qs[:2]
+            elif len(bonus_qs) == 1:
+                # only one bonus drawn → single x2
+                mult[bonus_qs[0].id] = 2
+            random.shuffle(regular_qs)
+
+            # Ordered: regular questions first, then bonus x2/x3 as the last two.
+            ordered = regular_qs + bonus_qs
+
             self.questions = [
                 {
                     "id": q.id,
@@ -194,9 +216,10 @@ class GameSession:
                     ],
                     "correct": q.correct_option,
                     "time_limit": q.time_limit,
-                    "score": q.score,
+                    "score": 500,  # base points for a correct answer (500–1000 with speed)
+                    "multiplier": mult.get(q.id, 1),
                 }
-                for q in selected
+                for q in ordered
             ]
 
             # Reset room state in DB
@@ -252,7 +275,8 @@ class GameSession:
             "text": q["text"],
             "options": q["options"],
             "time_limit": q["time_limit"],
-            "score": q.get("score", 1000),
+            "score": q.get("score", 500),
+            "multiplier": q.get("multiplier", 1),
         }
         await self.broadcast(question_msg)
 
@@ -313,14 +337,21 @@ class GameSession:
         await self._show_result(q)
 
     async def _show_result(self, q: dict):
-        """Compute scores, save to DB, broadcast result."""
+        """Compute scores, save to DB, broadcast result.
+
+        Scoring (2026): correct = 500 base + speed (0–500) → 500–1000.
+        Wrong = 0. Bonus questions multiply the final score by x2/x3.
+        Speed: each full second slower removes 25 points, rounded to the integer point.
+        No streak bonus.
+        """
         self.state = "result"
         correct_option = q["correct"]
+        multiplier = int(q.get("multiplier", 1))
         db = SessionLocal()
 
         try:
             # Calc scores & batch collect
-            score_updates: list[dict] = []  # {rp, is_correct, score, streak_bonus}
+            score_updates: list[dict] = []  # {rp, is_correct, score}
             for rp_id, ans in self.answers.items():
                 is_correct = (ans["option"] == correct_option)
                 ans_time = ans["ms"]
@@ -328,8 +359,10 @@ class GameSession:
 
                 score = 0
                 if is_correct:
-                    speed_bonus = int((1 - ans_time / time_limit) * 500)
-                    score = q.get("score", 1000) + speed_bonus
+                    # Base 500 + speed (up to 500). At 20s limit this is 25 pts/second.
+                    speed_bonus = max(0, min(500, int((1 - ans_time / time_limit) * 500)))
+                    score = 500 + speed_bonus
+                    score = int(score * multiplier)  # bonus x2/x3 applied after base score
 
                 ans["correct"] = is_correct
                 ans["score"] = score
@@ -338,10 +371,9 @@ class GameSession:
                 rp = db.query(RoomPlayer).filter(RoomPlayer.id == rp_id).first()
                 if rp:
                     if is_correct:
-                        rp.streak += 1
-                        rp.total_score += score + rp.streak * 100
+                        rp.total_score += score
                     else:
-                        rp.streak = 0
+                        pass  # wrong answer → no points
 
                     pa = PlayerAnswer(
                         player_id=rp_id,
@@ -349,7 +381,7 @@ class GameSession:
                         chosen_option=ans["option"],
                         is_correct=is_correct,
                         answer_time_ms=ans_time,
-                        score_earned=score + (rp.streak * 100 if is_correct else 0),
+                        score_earned=score,
                     )
                     db.add(pa)
 
