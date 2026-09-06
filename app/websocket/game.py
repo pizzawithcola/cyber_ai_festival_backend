@@ -5,7 +5,7 @@ Architecture:
   - One GameSession per room (stored in memory dict).
   - Each WS connection receives a role: "admin" or "player".
   - Admin can START the game; players receive questions and submit answers.
-  - Correct = 500 base + speed (0–500) → 500–1000; wrong = 0.
+  - Correct = 50 base + speed (0–50) → 50–100 per question; wrong = 0.
   - Bonus questions (x2/x3) multiply the earned score. No streak bonus.
 """
 
@@ -21,8 +21,33 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.room import Room, RoomPlayer, Question, PlayerAnswer
+from app.models.score import Score
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_game5_to_100(total_score: float, max_possible: float) -> float:
+    """Normalize a room total to the global 0-100 game5 score.
+
+    max_possible is the sum over the drawn questions of (100 × multiplier).
+    Room scores below 0 (impossible) or above max are clamped to [0, 100].
+    """
+    if not total_score or max_possible <= 0:
+        return 0.0
+    return round(max(0.0, min(100.0, (total_score / max_possible) * 100.0)), 1)
+
+
+def correct_answer_score(answer_time_ms: int, time_limit_ms: int, multiplier: int) -> int:
+    """Score for a correct answer: 50 base + up to 50 speed, then × bonus multiplier.
+
+    At the 20s question limit the 50 speed points decay by 2.5 pts/second.
+    """
+    if time_limit_ms <= 0:
+        speed_bonus = 50
+    else:
+        speed_bonus = max(0, min(50, int((1 - answer_time_ms / time_limit_ms) * 50)))
+    return int((50 + speed_bonus) * multiplier)
+
 
 # ─── Global storage ──────────────────────────────────────────────────────────
 # room_code → GameSession
@@ -217,7 +242,7 @@ class GameSession:
                     ],
                     "correct": q.correct_option,
                     "time_limit": q.time_limit,
-                    "score": 500,  # base points for a correct answer (500–1000 with speed)
+                    "score": 100,  # max points per question (50 base + 50 speed before multiplier)
                     "multiplier": mult.get(q.id, 1),
                 }
                 for q in ordered
@@ -277,7 +302,7 @@ class GameSession:
             "text": q["text"],
             "options": q["options"],
             "time_limit": q["time_limit"],
-            "score": q.get("score", 500),
+            "score": q.get("score", 100),
             "multiplier": q.get("multiplier", 1),
         }
         await self.broadcast(question_msg)
@@ -357,9 +382,9 @@ class GameSession:
     async def _show_result(self, q: dict):
         """Compute scores, save to DB, broadcast result.
 
-        Scoring (2026): correct = 500 base + speed (0–500) → 500–1000.
+        Scoring (2026): correct = 50 base + speed (0–50) → 50–100 per question.
         Wrong = 0. Bonus questions multiply the final score by x2/x3.
-        Speed: each full second slower removes 25 points, rounded to the integer point.
+        Speed: at a 20s limit the 50 speed points decay by 2.5 pts/second.
         No streak bonus.
         """
         self.state = "result"
@@ -377,10 +402,7 @@ class GameSession:
 
                 score = 0
                 if is_correct:
-                    # Base 500 + speed (up to 500). At 20s limit this is 25 pts/second.
-                    speed_bonus = max(0, min(500, int((1 - ans_time / time_limit) * 500)))
-                    score = 500 + speed_bonus
-                    score = int(score * multiplier)  # bonus x2/x3 applied after base score
+                    score = correct_answer_score(ans_time, time_limit, multiplier)
 
                 ans["correct"] = is_correct
                 ans["score"] = score
@@ -427,7 +449,7 @@ class GameSession:
                 "text": q["text"],
                 "options": q["options"],
                 "time_limit": q["time_limit"],
-                "score": q.get("score", 500),
+                "score": q.get("score", 100),
                 "multiplier": q.get("multiplier", 1),
             },
             "correct_option": correct_option,
@@ -513,6 +535,36 @@ class GameSession:
                 }
                 for i, p in enumerate(players)
             ]
+
+            # ARCH-01: mirror each player's final room score into the global
+            # per-player game5_score (normalized to the 0-100 leaderboard scale).
+            # Best result across games is kept. Wrapped in its own try/except so a
+            # sync failure can never block the game-over broadcast below.
+            try:
+                max_possible = sum(100 * int(q.get("multiplier", 1)) for q in self.questions) or 1
+                for p in players:
+                    if not p.user_id or not p.total_score:
+                        continue
+                    normalized = normalize_game5_to_100(p.total_score, max_possible)
+                    if normalized <= 0:
+                        continue
+                    sc = db.query(Score).filter(Score.user_id == p.user_id).first()
+                    if sc is None:
+                        sc = Score(user_id=p.user_id, game1_score=0, game2_score=0, game3_score=0, game4_score=0, game5_score=0)
+                        db.add(sc)
+                    if normalized > (sc.game5_score or 0):
+                        sc.game5_score = normalized
+                        sc.total_score = (
+                            (sc.game1_score or 0)
+                            + (sc.game2_score or 0)
+                            + (sc.game3_score or 0)
+                            + (sc.game4_score or 0)
+                            + normalized
+                        )
+                db.commit()
+            except Exception as e:
+                logger.error("Room %s: failed to sync game5_score: %s", self.room_code, e)
+                db.rollback()
         except Exception:
             raise
         finally:
