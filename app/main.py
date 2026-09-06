@@ -209,9 +209,23 @@ app = FastAPI(
     version="0.1.2",
 )
 
+
+def _cors_origins() -> list[str]:
+    """Allowed CORS origins from settings.cors_origins (comma-separated).
+
+    Safety net: while CORS_ORIGINS is unset we keep the historical permissive "*"
+    so configuring this can never take the platform down by itself. Set the env var
+    (e.g. to the CloudFront front-end domain + local dev ports) to actually restrict.
+    """
+    raw = (settings.cors_origins or "").strip()
+    if not raw:
+        return ["*"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

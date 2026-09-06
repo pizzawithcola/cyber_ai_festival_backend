@@ -3,28 +3,36 @@ from sqlalchemy.orm import Session
 from app.models.score import Score
 from app.schemas.score import ScoreCreate, ScoreUpdate
 
+# Per-game score range (all games normalize to 0-100 on the leaderboard).
+GAME_FIELDS = ["game1_score", "game2_score", "game3_score", "game4_score", "game5_score"]
+SCORE_MIN = 0
+SCORE_MAX = 100
+
+
+def _clamp(value) -> float:
+    """Server-side range guard: reject NaN and clamp every game score to 0-100."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = 0.0
+    if v != v:  # NaN
+        return 0.0
+    return max(SCORE_MIN, min(SCORE_MAX, v))
+
 
 def create_score(db: Session, data: ScoreCreate) -> Score:
     # Check if score already exists for this user (1:1 relationship)
     existing_score = get_score_by_user(db, data.user_id)
     if existing_score:
         raise ValueError(f"Score already exists for user_id={data.user_id}")
-    
-    # Auto-calculate total_score from game scores
-    game1 = data.game1_score or 0
-    game2 = data.game2_score or 0
-    game3 = data.game3_score or 0
-    game4 = data.game4_score or 0
-    game5 = data.game5_score or 0
-    
+
+    # Auto-calculate total_score from clamped game scores
+    games = {f: _clamp(getattr(data, f)) for f in GAME_FIELDS}
+
     score = Score(
         user_id=data.user_id,
-        game1_score=game1,
-        game2_score=game2,
-        game3_score=game3,
-        game4_score=game4,
-        game5_score=game5,
-        total_score=game1 + game2 + game3 + game4 + game5,
+        **games,
+        total_score=sum(games.values()),
     )
     db.add(score)
     db.commit()
@@ -44,24 +52,19 @@ def get_score_by_user(db: Session, user_id: int) -> Score | None:
 
 def update_score(db: Session, score: Score, data: ScoreUpdate) -> Score:
     update_data = data.model_dump(exclude_unset=True)
-    
-    # Update individual game score fields
+
+    # Update individual game score fields (clamped server-side)
     for field, value in update_data.items():
-        # Ensure None values are converted to 0 for non-nullable fields
-        if value is None and field in ['game1_score', 'game2_score', 'game3_score', 'game4_score', 'game5_score']:
-            setattr(score, field, 0)
+        if field in GAME_FIELDS:
+            setattr(score, field, _clamp(value))
         else:
             setattr(score, field, value)
-    
+
     # Always auto-calculate total_score from game scores
-    score.total_score = (
-        (score.game1_score or 0) +
-        (score.game2_score or 0) +
-        (score.game3_score or 0) +
-        (score.game4_score or 0) +
-        (score.game5_score or 0)
+    score.total_score = sum(
+        _clamp(getattr(score, f) if getattr(score, f) is not None else 0) for f in GAME_FIELDS
     )
-    
+
     db.commit()
     db.refresh(score)
     return score
