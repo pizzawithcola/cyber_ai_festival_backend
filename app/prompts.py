@@ -57,12 +57,19 @@ asks for it) and contains no contradictions.
         "2": [<score>, "<reason>"],
         "3": [<score>, "<reason>"],
         "4": [<score>, "<reason>"]
+    },
+    "item_scores": {
+        "1.1": <item_score>, "1.2": <item_score>, "1.3": <item_score>, "1.4": <item_score>, "1.5": <item_score>,
+        "2.1": <item_score>, "2.2": <item_score>, "2.3": <item_score>, "2.4": <item_score>, "2.5": <item_score>,
+        "3.1": <item_score>, "3.2": <item_score>, "3.3": <item_score>, "3.4": <item_score>, "3.5": <item_score>,
+        "4.1": <item_score>, "4.2": <item_score>, "4.3": <item_score>, "4.4": <item_score>, "4.5": <item_score>
     }
 }
-- <score>: the dimension score, i.e. the sum of its 5 items (each 0, 2.5 or 5), so it is \
-a multiple of 2.5 between 0 and 25.
+- <item_score>: the tier you picked for that single rubric item: 0, 2.5 or 5. All 20 items MUST be present.
+- <score>: the dimension score, i.e. the sum of its 5 items, so it is a multiple of 2.5 between 0 and 25.
 - <total_score>: the sum of the 4 dimension scores, between 0 and 100. Do not score it independently.
-- <reason>: short, and it MUST list the per-item verdicts, e.g. "1.1=5 1.2=5 1.3=0 1.4=2.5 1.5=5".
+- <reason>: one short human-readable sentence explaining the dimension result (no item codes needed, \
+the per-item tiers are already reported in item_scores).
 - Return ONLY the JSON, no extra text."""
 
 
