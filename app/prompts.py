@@ -9,44 +9,69 @@ participant prepared a phishing email.
 
 The participant only had 1-2 minutes, so:
 - Do NOT penalize brevity, typos, grammar, or missing pleasantries.
-- Judge ONLY whether each rubric item below is fully present, partially present, or absent.
+- Judge EFFECTS, not techniques. Each item below describes an effect the email should 
+reach. Any technique that achieves the effect counts as fully present - never require one 
+specific wording or format.
+- One sentence may be credited to ONE item only. Pick the single item it fits best and 
+score the other items on the rest of the email - never let the same sentence earn points twice.
+
+== ITEM TIERS ==
+- CORE: a baseline requirement. Missing it is a real flaw.
+- SITUATIONAL: first ask "does this mission actually call for this technique?"
+    * the mission gives no basis for it (e.g. a friendly collaboration ask with no time 
+pressure) -> award 2.5. Never punish the participant for skipping a technique the task 
+never needed.
+    * the mission does call for it: delivered -> 5, weakly/implied -> 2.5, missed -> 0.
+- BONUS: extra credit polish. Delivered -> 5, partial -> 2.5, missing -> 0 (no extra penalty).
 
 == SCORING RUBRIC ==
 There are 4 dimensions. Each dimension is worth 25 points and contains 5 items worth 5 points each.
 For every item pick exactly ONE tier:
-- 5.0 = fully present / clearly satisfied
-- 2.5 = partially present (vague, weaker form, or only implied)
-- 0   = absent
+- 5.0 = the effect is clearly achieved
+- 2.5 = partially achieved, or a SITUATIONAL item this mission did not call for
+- 0   = absent even though the mission called for it
 
 [Dimension 1] Personalization (max 25)
-1.1 Uses a personalized salutation with the target's name.
-1.2 Mentions the target's position or department.
-1.3 References at least one of the target's hobbies or interests.
-1.4 Echoes the target's personality traits (e.g. detail-oriented, skeptical, eager to please).
-1.5 The scenario matches the mission title and description.
+1.1 (CORE) Uses the target's name in the greeting.
+1.2 (CORE) Grounded in the target's real role or business context - their department, 
+position, or the work they actually own or recently did.
+1.3 (SITUATIONAL) Brings in the target's personal side (hobbies, interests, public 
+activity) to build rapport. Only missions with a personal or prize angle require this.
+1.4 (SITUATIONAL) Speaks to what this particular person cares about - the framing that 
+lands with their personality (a skeptic wants technical proof, someone career-driven 
+wants visibility with leadership, a helpful person wants to be useful).
+1.5 (CORE) The scenario matches the mission title and description.
 
 [Dimension 2] Persuasion (max 25)
-2.1 States an explicit time limit (e.g. "within 24 hours", "today", "by 3 PM", "EOD", "ASAP").
-2.2 Uses a loss or consequence framing (e.g. lockout, suspension, termination, legal action, data loss).
-2.3 Cites authority or policy (e.g. CISO, HR, supervisor, company policy, compliance).
-2.4 Offers a benefit or reward hook (e.g. prize, gift card, bonus, refund, exclusive offer).
-2.5 Keeps one consistent emotional angle with coherent persuasive logic.
+2.1 (SITUATIONAL) Creates a sense that acting now matters - a time window, an expiry, or 
+a closing opportunity. A bare "ASAP" with nothing behind it is weak (2.5).
+2.2 (SITUATIONAL) Makes the cost of not acting visible - lockout, data loss, a missed 
+deadline, audit exposure, letting a colleague down. No threat is required when the 
+scenario does not warrant one.
+2.3 (SITUATIONAL) Borrows authority from someone or something the target respects - an 
+executive, IT/HR, company policy, a client, or "your manager". Any credible third party counts.
+2.4 (BONUS) Offers something positive in return - recognition, visibility with leadership, 
+credit, reciprocity, a perk or a reward.
+2.5 (CORE) Keeps one consistent emotional angle with coherent persuasive logic.
 
 [Dimension 3] Sender Credibility (max 25)
-3.1 The sender domain fits the mission type (internal missions should look internal such as @acc.com; \
+3.1 (CORE) The sender domain fits the mission type (internal missions should look internal such as @acc.com; \
 prize/reward missions should look like a plausible external brand domain).
-3.2 The signature block includes a name.
-3.3 The signature block includes a job title or a department.
-3.4 The signature block includes contact details (extension, phone, or email).
-3.5 The claimed identity matches the mission (e.g. impersonating a senior manager when the mission \
+3.2 (CORE) The signature block is a person, not a team or a generic mailbox.
+3.3 (CORE) The signature block includes a job title or a department.
+3.4 (BONUS) Adds verifiable-feeling detail - extension, office location, employee ID, or \
+an internal reference such as a meeting or ticket number.
+3.5 (CORE) The claimed identity matches the mission (e.g. impersonating a senior manager when the mission \
 asks for it) and contains no contradictions.
 
 [Dimension 4] Call to Action (max 25)
-4.1 Contains at least one link.
-4.2 The link matches the mission's Target Link. If the Target Link is missing or different, this item is 0.
-4.3 Uses an explicit action verb (e.g. reset, click, verify, upload, claim, download).
-4.4 The guidance is clearly structured (numbered or bulleted steps).
-4.5 The requested action is bound to a deadline (e.g. "before 3 PM today").
+4.1 (CORE) Contains at least one clickable destination (a link or an attachment).
+4.2 (CORE) The link matches the mission's Target Link. If the Target Link is missing or different, this item is 0.
+4.3 (CORE) Uses an explicit action verb (e.g. send, share, upload, reset, verify, claim, download).
+4.4 (SITUATIONAL) Steps are structured when the ask has several steps. A single-action \
+request only needs to be stated clearly - require structure only when several steps must be performed.
+4.5 (BONUS) Lowers the effort to comply - a ready-made link, the exact folder, a \
+pre-filled recipient, "just reply with the file".
 
 == OUTPUT FORMAT ==
 [Important] The response MUST be valid JSON and nothing else:
@@ -65,7 +90,8 @@ asks for it) and contains no contradictions.
         "4.1": <item_score>, "4.2": <item_score>, "4.3": <item_score>, "4.4": <item_score>, "4.5": <item_score>
     }
 }
-- <item_score>: the tier you picked for that single rubric item: 0, 2.5 or 5. All 20 items MUST be present.
+- <item_score>: the tier you picked for that single rubric item: 0, 2.5 or 5. All 20 items MUST be present. \
+Use 2.5 both for a weaker form AND for a SITUATIONAL item that this mission did not call for.
 - <score>: the dimension score, i.e. the sum of its 5 items, so it is a multiple of 2.5 between 0 and 25.
 - <total_score>: the sum of the 4 dimension scores, between 0 and 100. Do not score it independently.
 - <reason>: one short human-readable sentence explaining the dimension result (no item codes needed, \
