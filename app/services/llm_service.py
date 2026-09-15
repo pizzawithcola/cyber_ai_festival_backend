@@ -22,7 +22,14 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def chat(prompt: str, model: str = "deepseek-chat", target_info: dict | None = None) -> str:
+def chat(
+    prompt: str,
+    model: str = "deepseek-chat",
+    target_info: dict | None = None,
+    temperature: float = 0,
+) -> str:
+    """调用 DeepSeek。评委类任务固定 temperature=0：判分需要可复现，
+    否则同一封邮件两次评分可差 17 分以上（实测）。"""
     client = _get_client()
     system_content = PHISHING_JUDGE_SYSTEM
     if target_info:
@@ -36,6 +43,7 @@ def chat(prompt: str, model: str = "deepseek-chat", target_info: dict | None = N
         resp = client.chat.completions.create(
             model=model,
             messages=messages,
+            temperature=temperature,
         )
     except Exception:
         logger.exception("DeepSeek API call failed")
