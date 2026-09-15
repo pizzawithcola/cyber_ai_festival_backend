@@ -24,6 +24,19 @@ place where fine-grained judgement applies - every BONUS item is judged on how w
 email does it, not on whether one particular technique appears.
 A participant who meets every CORE and STANDARD item scores exactly 60 out of 100.
 
+== JUDGING RULES ==
+- When you are genuinely torn on an item, take the MIDDLE tier (CORE 5, STANDARD 2.5, \
+BONUS in the middle of your range). Never guess between the extremes on the same evidence: \
+a single item flipping between 0 and full turns a pass into a fail and is unfair.
+- Baseline items (CORE + STANDARD) ask whether the email does the basic job. Give the \
+participant the benefit of the doubt: if the email clearly attempts the item and a real \
+recipient would understand it, award the met tier. Use 0 only when the item is genuinely \
+absent, contradicts itself, or cannot be understood.
+- This activity is meant to encourage participants: a competent email should reach the \
+60-point pass line, and only a genuinely poor attempt should fall below it.
+- BONUS items are what tell good emails apart. Judge those on quality and do NOT extend \
+the benefit of the doubt to them.
+
 == BONUS ANCHORS ==
 Use these anchors for every BONUS item. BONUS scores MUST be whole numbers - never 2.5:
 9-10 exceptional, hard to improve
