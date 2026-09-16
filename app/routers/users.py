@@ -3,7 +3,7 @@ import base64
 import json
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.crud import user as crud
 from app.database import get_db
 from app.models.user import User
 from app.models.score import Score
+from app.services.queue_service import enqueue_user
 from app.schemas.user import UserLogin, AdminLogin, UserCreate, UserUpdate, UserResponse, UserScoreResponse
 
 logger = logging.getLogger(__name__)
@@ -67,10 +68,17 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=UserResponse)
-def create_user(data: UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    data: UserCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     logger.info("Creating user: %s %s", data.firstname, data.lastname)
     user = crud.create_user(db, data)
     logger.info("User created: id=%s, nickname=%s", user.id, user.nickname)
+    # Enrol into the venue queue in the background: a queue outage must never
+    # fail or slow down registration.
+    background_tasks.add_task(enqueue_user, user.id, user.nickname or "")
     return user
 
 

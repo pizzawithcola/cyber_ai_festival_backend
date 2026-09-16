@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     # API Security
     api_key: str = ""
 
+    # External venue queue system (see doc/QUEUE_INTEGRATION.md).
+    # Disabled unless the deployment provides a queue id + api key.
+    queue_enabled: bool = False
+    queue_base_url: str = "https://queue-system-e6780.web.app/api"
+    queue_queue_id: str = ""
+    queue_api_key: str = ""
+    queue_timeout_seconds: float = 10.0
+
     # CORS: comma-separated origin allow-list, e.g.
     # "https://d24umo4oysfx97.cloudfront.net,http://localhost:1688".
     # Empty = keep the current permissive behaviour ("*"), so not configuring this
