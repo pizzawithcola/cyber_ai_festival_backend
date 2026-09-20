@@ -18,13 +18,19 @@ Parameters:
     Type: AWS::EC2::Parameter
     Description: Public Subnet 2 for ALB
 
+  # ECS task subnets. Both MUST sit in Availability Zones that the ALB below is
+  # enabled in, otherwise the target group rejects the task with
+  # "Target is in an Availability Zone that is not enabled for the load balancer",
+  # the health check fails and the deployment rolls back.
+  # They must also provide internet egress (the live VPC has no NAT gateway, so
+  # the task subnets are public and AssignPublicIp must stay ENABLED).
   PrivateSubnet1:
     Type: AWS::EC2::Parameter
-    Description: Private Subnet 1 for ECS
+    Description: Subnet 1 for the ECS tasks - ALB-enabled AZ and egress required
 
   PrivateSubnet2:
     Type: AWS::EC2::Parameter
-    Description: Private Subnet 2 for ECS
+    Description: Subnet 2 for the ECS tasks - ALB-enabled AZ and egress required
 
   DatabaseUrl:
     Type: String
@@ -230,12 +236,19 @@ Resources:
       DesiredCount: 1
       NetworkConfiguration:
         AwsvpcConfiguration:
+          # Live service: exactly two subnets, ap-south-1a + ap-south-1b, both of
+          # which the ALB covers. A third subnet in ap-south-1c used to be listed
+          # here; it was removed on 2026-09-20 because the ALB does not serve that
+          # AZ, which made roughly one in three deployments fail and roll back.
           Subnets:
             - !Ref PrivateSubnet1
             - !Ref PrivateSubnet2
           SecurityGroups:
             - !Ref EcsSecurityGroup
-          AssignPublicIp: DISABLED
+          # MUST stay ENABLED for this deployment: the task subnets are public and
+          # the VPC has no NAT gateway, so DISABLED would remove all egress and the
+          # task could not even pull its image. Do not "fix" this to DISABLED.
+          AssignPublicIp: ENABLED
       LoadBalancers:
         - TargetGroupArn: !Ref AlbTargetGroup
           ContainerName: cyber-ai-festival-backend

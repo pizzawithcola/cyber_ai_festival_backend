@@ -154,6 +154,34 @@ alembic upgrade head
 - 使用私有子网运行数据库
 - 使用公有或私有子网运行 ECS（推荐私有 + NAT Gateway）
 
+> ⚠️ **ECS 任务的子网必须落在 ALB 已启用的可用区内**（2026-09-20 实际踩到的坑）
+>
+> 线上 ALB 只启用了 **ap-south-1a / ap-south-1b**。当时 ECS 服务的子网里多了
+> `ap-south-1c`，任务一旦被调度到该区，ALB 就会报
+> `Target is in an Availability Zone that is not enabled for the load balancer`，
+> 健康检查失败 → `deployment failed: tasks failed to start` → **ECS 自动回滚**，
+> 表现为「部署随机失败，约 1/3 概率」。
+>
+> 排查命令：
+>
+> ```bash
+> aws ecs describe-services --cluster cyber-ai-festival-cluster \
+>   --services cyber-ai-festival-service --region ap-south-1 \
+>   --query 'services[0].events[:10].[createdAt,message]' --output table
+> ```
+>
+> **线上 ECS 服务的实际网络配置**（与 `infra/cloudformation.yml` 的旧写法不同，别照旧写法改）：
+>
+> | 项 | 线上实际值 |
+> |---|---|
+> | subnets | `subnet-045ccd04e547efddb` (ap-south-1b) + `subnet-01b3aa683790a0e8c` (ap-south-1a) |
+> | securityGroups | `sg-0917a0a8d60605c64` |
+> | assignPublicIp | **ENABLED** |
+>
+> 这批子网都是**公有子网**（`MapPublicIpOnLaunch=true`，路由表含 `0.0.0.0/0 → igw-...`），
+> 且该 VPC **没有 NAT Gateway**。因此 `AssignPublicIp` 必须保持 `ENABLED`：
+> 改成 `DISABLED` 会让任务失去全部公网出口，连 ECR 镜像都拉不下来。
+
 ### 7. 监控和日志
 
 #### CloudWatch 日志
