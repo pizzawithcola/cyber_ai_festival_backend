@@ -10,8 +10,14 @@ doc/QUEUE_INTEGRATION.md):
 - DELETE {base}/v1/queues/{queue_id}/participants/{participant_id}   (undocumented)
 - ``name`` is required, non-empty and at most 100 characters, otherwise the
   server answers 400 {"error": "name_required"} / {"error": "name_too_long"}.
-- ``email`` became optional and is still accepted for backwards compatibility.
-  We do not send it, so no player address ever leaves our system.
+- ``email`` is optional but NOT gone: a supplied value is validated (400
+  {"error": "email_invalid"}) and switches the entry into a SEPARATE identity
+  space -- live probing on 2026-09-18 proved that an entry created with an email
+  can never be matched by an ``externalId`` lookup that omits it. We therefore
+  never send one: identity stays in the ``externalId`` space and no player
+  address ever leaves our system. Guarded by tests/test_queue_payload.py.
+- An idempotent hit updates the stored ``name`` (the screen shows the last
+  submitted name), so always send the player's current nickname.
 - Connection resets happen in practice (CN egress), so transient errors retry.
 
 Design rules:
