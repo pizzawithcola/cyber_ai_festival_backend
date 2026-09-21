@@ -15,6 +15,7 @@ from app.database import engine, Base, SessionLocal
 from app.routers import users, scores, rankings, llm
 from app.routers import rooms as rooms_router
 from app.routers import questions as questions_router
+from app.routers import queue as queue_router
 from app.websocket.game import websocket_endpoint
 
 # Ensure all models are imported so Base.metadata knows about them
@@ -277,6 +278,7 @@ app.include_router(rankings.router, prefix="/rankings", tags=["rankings"], depen
 app.include_router(llm.router, prefix="/llm", tags=["llm"], dependencies=[Depends(verify_api_key)])
 app.include_router(rooms_router.router, prefix="/rooms", tags=["rooms"], dependencies=[Depends(verify_api_key)])
 app.include_router(questions_router.router, prefix="/questions", tags=["questions"], dependencies=[Depends(verify_api_key)])
+app.include_router(queue_router.router, prefix="/queue", tags=["queue"], dependencies=[Depends(verify_api_key)])
 
 
 # --------------- 请求日志中间件 ---------------
