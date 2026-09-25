@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -5,23 +7,41 @@ from app.models.user import User
 from app.schemas.user import UserCreate, UserUpdate
 
 
-def generate_nickname(db: Session, firstname: str, lastname: str | None) -> str:
-    """
-    生成唯一昵称：名字全拼 + 姓氏首字母大写，后缀 _NNN 按同名累加。
-    例："Jamie Liu" → "JamieL_001"；下一个同名（Jamie/姓氏L开头）→ "JamieL_002"。
-    """
-    first = (firstname or "").strip()
-    last = (lastname or "").strip()
-    base = first + (last[0].upper() if last else "")
-    if not base:
-        base = "Player"
+def initials_of(firstname: str, lastname: str | None) -> str:
+    """Two-letter initials from the real name, e.g. "Jamie Liu" -> "JL".
 
-    # 已有同名基数：既可能存的是 base（旧数据），也可能是 base_xxx
-    prefix = f"{base}_"
-    existing = db.query(User).filter(
-        (User.nickname == base) | User.nickname.like(f"{prefix}%")
-    ).count()
-    return f"{base}_{existing + 1:03d}"
+    Falls back to the first two letters of whichever name part is present, and
+    to "PL" when neither is usable.
+    """
+    first = re.sub(r"[^A-Za-z]", "", (firstname or "").strip())
+    last = re.sub(r"[^A-Za-z]", "", (lastname or "").strip())
+    if first and last:
+        return (first[0] + last[0]).upper()
+    if first:
+        return first[:2].upper()
+    if last:
+        return last[:2].upper()
+    return "PL"
+
+
+def generate_nickname(db: Session, firstname: str, lastname: str | None) -> str:
+    """Short, memorable nickname: initials + the smallest free number.
+
+    Examples: "Jamie Liu" -> "JL1", "JL2", ...; a single name "Jamie" -> "JA1".
+    The number is scoped per initials, so many players may share the same letters.
+    """
+    base = initials_of(firstname, lastname)
+    used: set[int] = set()
+    for (nick,) in db.query(User.nickname).filter(User.nickname.ilike(f"{base}%")).all():
+        if not nick:
+            continue
+        suffix = nick[len(base):]
+        if suffix.isdigit():
+            used.add(int(suffix))
+    number = 1
+    while number in used:
+        number += 1
+    return f"{base}{number}"
 
 
 def ensure_nickname(db: Session, user: User) -> User:

@@ -77,8 +77,10 @@ def create_user(
     user = crud.create_user(db, data)
     logger.info("User created: id=%s, nickname=%s", user.id, user.nickname)
     # Enrol into the venue queue in the background: a queue outage must never
-    # fail or slow down registration.
-    background_tasks.add_task(enqueue_user, user.id, user.nickname or "")
+    # fail or slow down registration. The queue big screen shows the player's
+    # real name (nickname is only the fallback when the names are somehow empty).
+    queue_display_name = f"{user.firstname} {user.lastname}".strip() or user.nickname or ""
+    background_tasks.add_task(enqueue_user, user.id, queue_display_name)
     return user
 
 

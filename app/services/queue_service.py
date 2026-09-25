@@ -121,7 +121,7 @@ def _post_participant(queue_id: str, name: str, user_id: int) -> tuple[int, str]
     response = httpx.post(
         url,
         # Our user id is the stable identity the queue deduplicates on, and the
-        # nickname is the only label we need to display on the screen.
+        # real name is the label displayed on the venue big screen.
         json={"name": name, "externalId": str(user_id)},
         headers=_api_headers(),
         timeout=settings.queue_timeout_seconds,
@@ -172,7 +172,7 @@ def _attempt(queue_id: str, name: str, user_id: int) -> bool:
     return False
 
 
-def enqueue_user(user_id: int, nickname: str) -> bool:
+def enqueue_user(user_id: int, display_name: str) -> bool:
     """Best-effort enrolment of one player. Never raises."""
     if not settings.queue_enabled:
         logger.debug("Queue integration disabled; skipping user %s", user_id)
@@ -190,7 +190,7 @@ def enqueue_user(user_id: int, nickname: str) -> bool:
 
     # The queue rejects an empty or over-long name, so always send something
     # human-readable that fits the limit.
-    name = (nickname or "").strip()[:MAX_NAME_LENGTH] or f"Player {user_id}"
+    name = (display_name or "").strip()[:MAX_NAME_LENGTH] or f"Player {user_id}"
 
     if _attempt(queue_id, name, user_id):
         return True

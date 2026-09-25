@@ -71,7 +71,7 @@ class TestCreateUser:
         data = resp.json()
         assert data["firstname"] == "Bob"
         assert data["lastname"] == "Li"
-        assert data["nickname"] == "BobL_001"
+        assert data["nickname"] == "BL1"
         assert data["region"] == "APAC"
         assert "id" in data
         assert "created_at" in data
@@ -86,50 +86,50 @@ class TestCreateUser:
         assert resp.json()["region"] is None
 
     def test_create_user_nickname_increments(self, client, sample_user):
-        """同名（firstname + 姓氏首字母相同）时 nickname 数字累加"""
-        assert sample_user["nickname"] == "AliceW_001"
+        """首字母缩写相同（如 Alice Wang 与 Alice Wu）时 nickname 数字累加"""
+        assert sample_user["nickname"] == "AW1"
         resp = client.post("/users/", json={
             "firstname": "Alice",
             "lastname": "Wu",
         })
         assert resp.status_code == 200
-        assert resp.json()["nickname"] == "AliceW_002"
+        assert resp.json()["nickname"] == "AW2"
 
     def test_create_user_nickname_no_lastname(self, client):
-        """无姓氏时只取 firstname 作为 base"""
+        """无姓氏时取 firstname 前两字母作为 base"""
         resp = client.post("/users/", json={
             "firstname": "Prince",
             "lastname": "",
         })
         assert resp.status_code == 200
-        assert resp.json()["nickname"] == "Prince_001"
+        assert resp.json()["nickname"] == "PR1"
 
 
 class TestLoginUser:
     def test_login_success(self, client, sample_user):
         resp = client.post("/users/login", json={
-            "nickname": "AliceW_001",
+            "nickname": "AW1",
         })
         assert resp.status_code == 200
         assert resp.json()["id"] == sample_user["id"]
-        assert resp.json()["nickname"] == "AliceW_001"
+        assert resp.json()["nickname"] == "AW1"
 
     def test_login_case_insensitive(self, client, sample_user):
         """nickname 大小写不敏感 + trim"""
         resp = client.post("/users/login", json={
-            "nickname": "  alicew_001  ",
+            "nickname": "  aw1  ",
         })
         assert resp.status_code == 200
 
     def test_login_wrong_nickname(self, client, sample_user):
         resp = client.post("/users/login", json={
-            "nickname": "BobL_999",
+            "nickname": "BL999",
         })
         assert resp.status_code == 401
 
     def test_login_nickname_not_found(self, client):
         resp = client.post("/users/login", json={
-            "nickname": "GhostG_001",
+            "nickname": "GG1",
         })
         assert resp.status_code == 401
 
@@ -144,7 +144,7 @@ class TestGetUser:
     def test_get_user(self, client, sample_user):
         resp = client.get(f"/users/{sample_user['id']}")
         assert resp.status_code == 200
-        assert resp.json()["nickname"] == "AliceW_001"
+        assert resp.json()["nickname"] == "AW1"
 
     def test_get_user_not_found(self, client):
         resp = client.get("/users/9999")
@@ -217,7 +217,7 @@ class TestGetAllUsersWithScores:
         assert user["id"] == sample_user["id"]
         assert user["firstname"] == "Alice"
         assert user["lastname"] == "Wang"
-        assert user["nickname"] == "AliceW_001"
+        assert user["nickname"] == "AW1"
         assert user["region"] == "MENA"
         # Score ID should be the user ID in 1:1 relationship
         assert user["score_id"] == sample_user["id"]
@@ -250,7 +250,7 @@ class TestGetAllUsersWithScores:
         assert user["id"] == sample_user["id"]
         assert user["firstname"] == "Alice"
         assert user["lastname"] == "Wang"
-        assert user["nickname"] == "AliceW_001"
+        assert user["nickname"] == "AW1"
         assert user["region"] == "MENA"
         # Score ID should be the user ID
         assert user["score_id"] == sample_user["id"]
