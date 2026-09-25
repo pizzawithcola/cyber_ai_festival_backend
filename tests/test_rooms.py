@@ -109,3 +109,39 @@ class TestRejoinWhilePlaying:
 
         rejoin = client.post(f"/rooms/{code}/join", json={"user_id": 7, "player_name": "Alice"})
         assert rejoin.status_code == 400
+
+
+class TestJoinUsesRealName:
+    """Room join must show the user's real name (firstname lastname), not the
+    client-supplied player_name."""
+
+    def test_join_uses_real_name_from_db(self, client, sample_user):
+        resp = client.post("/rooms/", json={"question_count": 10})
+        assert resp.status_code == 200
+        code = resp.json()["room_code"]
+
+        # Client deliberately sends a bogus player_name — it must be ignored.
+        join = client.post(
+            f"/rooms/{code}/join",
+            json={"user_id": sample_user["id"], "player_name": "Hacker"},
+        )
+        assert join.status_code == 200
+
+        status = client.get(f"/rooms/{code}/status").json()
+        names = [p["player_name"] for p in status["players"]]
+        assert names == ["Alice Wang"]
+
+    def test_join_falls_back_to_client_name_when_user_missing(self, client):
+        resp = client.post("/rooms/", json={"question_count": 10})
+        assert resp.status_code == 200
+        code = resp.json()["room_code"]
+
+        join = client.post(
+            f"/rooms/{code}/join",
+            json={"user_id": 999, "player_name": "Guest"},
+        )
+        assert join.status_code == 200
+
+        status = client.get(f"/rooms/{code}/status").json()
+        assert status["players"][0]["player_name"] == "Guest"
+

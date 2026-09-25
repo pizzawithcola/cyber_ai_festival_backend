@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.room import Room, RoomPlayer, Question
+from app.models.user import User
 from app.constants import GAME_CATEGORIES
 from app.schemas.room import (
     CreateRoomRequest,
@@ -35,6 +36,20 @@ def _generate_room_code(db: Session) -> str:
         if not db.query(Room).filter(Room.code == code).first():
             return code
     raise HTTPException(status_code=500, detail="Failed to generate room code")
+
+
+def _player_display_name(db: Session, user_id: int, fallback: str) -> str:
+    """Resolve a room player's display name to their real name.
+
+    The client sends whatever it likes in player_name; we always prefer the
+    user's real name from the DB so every room display shows "Firstname Lastname".
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        full = f"{user.firstname or ''} {user.lastname or ''}".strip()
+        if full:
+            return full
+    return (fallback or "").strip() or f"Player {user_id}"
 
 
 # ─── Create / Join / Status ────────────────────────────────────────────────
@@ -138,17 +153,24 @@ def join_room(code: str, data: JoinRoomRequest, db: Session = Depends(get_db)):
     if room.status == "playing" and not existing:
         raise HTTPException(status_code=400, detail="Game already started")
 
+    display_name = _player_display_name(db, data.user_id, data.player_name)
+
     if existing:
+        # Refresh the stored name so a re-join (page refresh / WS reconnect)
+        # always shows the up-to-date real name.
+        if existing.player_name != display_name:
+            existing.player_name = display_name
+            db.commit()
         return JoinRoomResponse(
             player_id=existing.id, room_code=code,
             player_count=len(room.players),
         )
 
-    player = RoomPlayer(room_id=room.id, user_id=data.user_id, player_name=data.player_name)
+    player = RoomPlayer(room_id=room.id, user_id=data.user_id, player_name=display_name)
     db.add(player)
     db.commit()
     db.refresh(player)
-    logger.info("Player joined room %s: user_id=%s, name=%s", code, data.user_id, data.player_name)
+    logger.info("Player joined room %s: user_id=%s, name=%s", code, data.user_id, display_name)
     return JoinRoomResponse(
         player_id=player.id, room_code=code,
         player_count=len(room.players),
