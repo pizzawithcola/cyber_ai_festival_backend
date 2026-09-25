@@ -206,6 +206,42 @@ try:
 except Exception:
     logger.warning("Database not reachable at startup (will retry on first request): %s", traceback.format_exc())
 
+# ─── Nickname migration: 'Firstname+Initial_NNN' → memorable 'JL1' ───────────
+# Idempotent: the old auto format always contains an underscore, the new one
+# never does, so "any non-admin nickname with '_'" doubles as the marker.
+try:
+    from app.crud.user import initials_of
+
+    with engine.begin() as conn:
+        all_nicks = conn.execute(text(
+            "SELECT nickname FROM users WHERE role != 'admin' AND nickname IS NOT NULL"
+        )).fetchall()
+        used = {row[0] for row in all_nicks if row[0]}
+
+        rows = conn.execute(text(
+            "SELECT id, firstname, lastname, nickname FROM users "
+            "WHERE role != 'admin' AND (nickname LIKE '%\\_%' OR nickname IS NULL OR nickname = '') "
+            "ORDER BY id"
+        )).fetchall()
+
+        if not rows:
+            logger.info("Nickname migration: nothing to migrate (already in the new format)")
+        else:
+            plan = []
+            for r in rows:
+                base = initials_of(r.firstname, r.lastname)
+                number = 1
+                while f"{base}{number}" in used:
+                    number += 1
+                used.add(f"{base}{number}")
+                plan.append((r.id, r.nickname, f"{base}{number}"))
+
+            for uid, old, new in plan:
+                conn.execute(text("UPDATE users SET nickname = :n WHERE id = :i"), {"n": new, "i": uid})
+            logger.info("Nickname migration: migrated %d users to the new initials format", len(plan))
+except Exception:
+    logger.warning("Nickname migration failed: %s", traceback.format_exc())
+
 app = FastAPI(
     title="Cyber AI Festival API",
     description="用户登记、分数上传与 LLM 调用",
