@@ -17,6 +17,7 @@ from app.routers import rooms as rooms_router
 from app.routers import questions as questions_router
 from app.routers import queue as queue_router
 from app.routers import events as events_router
+from app.routers import qr_login as qr_login_router
 from app.websocket.game import websocket_endpoint
 
 # Ensure all models are imported so Base.metadata knows about them
@@ -318,6 +319,7 @@ app.include_router(rooms_router.router, prefix="/rooms", tags=["rooms"], depende
 app.include_router(questions_router.router, prefix="/questions", tags=["questions"], dependencies=[Depends(verify_api_key)])
 app.include_router(queue_router.router, prefix="/queue", tags=["queue"], dependencies=[Depends(verify_api_key)])
 app.include_router(events_router.router, prefix="/events", tags=["events"], dependencies=[Depends(verify_api_key)])
+app.include_router(qr_login_router.router, prefix="/qr-login", tags=["qr-login"], dependencies=[Depends(verify_api_key)])
 
 
 # --------------- 请求日志中间件 ---------------
