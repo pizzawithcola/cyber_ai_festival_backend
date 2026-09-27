@@ -209,26 +209,30 @@ class GameSession:
                 qc = min(question_count, len(all_q))
                 selected = random.sample(all_q, qc)
 
-            # ── Bonus multiplier: pick up to 2 bonus questions, assign x2/x3,
-            #    and force them to appear as the LAST two questions of the game. ──
-            bonus_qs = [q for q in selected if (q.category or "") == "bonus"]
-            regular_qs = [q for q in selected if (q.category or "") != "bonus"]
+            # ── Multipliers: bonus ×2 and UAE ×3, forced to the last positions ──
+            regular_qs = []
+            bonus_qs = []   # category "bonus" → ×2
+            uae_qs = []     # category "uae"   → ×3
+            for q in selected:
+                cat = q.category or ""
+                if cat == "bonus":
+                    bonus_qs.append(q)
+                elif cat == "uae":
+                    uae_qs.append(q)
+                else:
+                    regular_qs.append(q)
+
             # multiplier per question id
             mult: dict[int, int] = {}
-            if len(bonus_qs) >= 2:
-                random.shuffle(bonus_qs)
-                mult[bonus_qs[0].id] = 2
-                mult[bonus_qs[1].id] = 3
-                # extra bonus questions (if any) are treated as regular
-                regular_qs.extend(bonus_qs[2:])
-                bonus_qs = bonus_qs[:2]
-            elif len(bonus_qs) == 1:
-                # only one bonus drawn → single x2
-                mult[bonus_qs[0].id] = 2
+            for q in bonus_qs:
+                mult[q.id] = 2
+            for q in uae_qs:
+                mult[q.id] = 3
+
             random.shuffle(regular_qs)
 
-            # Ordered: regular questions first, then bonus x2/x3 as the last two.
-            ordered = regular_qs + bonus_qs
+            # Ordered: regular questions first, then ×2 bonus, then ×3 UAE last.
+            ordered = regular_qs + bonus_qs + uae_qs
 
             self.questions = [
                 {
