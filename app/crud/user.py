@@ -115,11 +115,14 @@ def update_user(db: Session, user: User, data: UserUpdate) -> User:
 def delete_user(db: Session, user: User) -> None:
     # room_players.user_id is a plain column (no FK), so the ORM does not cascade
     # it: without this the deleted player would linger as a ghost entry in every
-    # room they had joined.
+    # room they had joined. Delete through the ORM (NOT a bulk query) so each
+    # RoomPlayer also cascades its own player_answers rows - a bulk DELETE skips
+    # that cascade and trips the player_answers foreign key as soon as the player
+    # has answered a single question.
     from app.models.room import RoomPlayer
-    db.query(RoomPlayer).filter(RoomPlayer.user_id == user.id).delete(
-        synchronize_session=False
-    )
+    players = db.query(RoomPlayer).filter(RoomPlayer.user_id == user.id).all()
+    for player in players:
+        db.delete(player)
     db.delete(user)
     db.commit()
 

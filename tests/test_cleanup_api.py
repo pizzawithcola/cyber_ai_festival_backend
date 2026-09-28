@@ -26,6 +26,24 @@ def _create_room(client, question_count=7):
     return resp.json()["room_code"]
 
 
+def _seed_answer(db_session, code):
+    """Record one answered question for the first player in `code`."""
+    room = db_session.query(Room).filter(Room.code == code).first()
+    player = db_session.query(RoomPlayer).filter(RoomPlayer.room_id == room.id).first()
+    question = Question(
+        text="q", option_a="a", option_b="b", option_c="c", option_d="d",
+        correct_option="A", time_limit=20, category="general", score=1000,
+    )
+    db_session.add(question)
+    db_session.commit()
+    db_session.add(PlayerAnswer(
+        player_id=player.id, question_id=question.id, chosen_option="A",
+        is_correct=True, answer_time_ms=1200, score_earned=1000,
+    ))
+    db_session.commit()
+    return player
+
+
 class TestDeleteRoom:
     def test_delete_room_removes_players_and_answers(self, client, db_session):
         code = _create_room(client)
@@ -41,18 +59,7 @@ class TestDeleteRoom:
         # Give one player an answer so the second-level cascade is covered too.
         room = db_session.query(Room).filter(Room.code == code).first()
         room_id = room.id
-        player = db_session.query(RoomPlayer).filter(RoomPlayer.room_id == room_id).first()
-        question = Question(
-            text="q", option_a="a", option_b="b", option_c="c", option_d="d",
-            correct_option="A", time_limit=20, category="general", score=1000,
-        )
-        db_session.add(question)
-        db_session.commit()
-        db_session.add(PlayerAnswer(
-            player_id=player.id, question_id=question.id, chosen_option="A",
-            is_correct=True, answer_time_ms=1200, score_earned=1000,
-        ))
-        db_session.commit()
+        _seed_answer(db_session, code)
 
         resp = client.delete(f"/rooms/{code}")
         assert resp.status_code == 200
@@ -102,6 +109,35 @@ class TestDeleteUsers:
         assert db_session.query(RoomPlayer).filter(RoomPlayer.user_id == user["id"]).count() == 0
         room = next(r for r in client.get("/rooms/").json() if r["room_code"] == code)
         assert room["player_count"] == 0
+
+    def test_delete_user_who_already_answered(self, client, db_session):
+        """A player with player_answers rows must still be deletable.
+
+        Regression guard: cleaning room_players with a bulk query skips the
+        ORM cascade and trips the player_answers foreign key.
+        """
+        code = _create_room(client)
+        user = _create_user(client, "Answer", "Given")
+        client.post(f"/rooms/{code}/join", json={"user_id": user["id"], "player_name": "p"})
+        _seed_answer(db_session, code)
+
+        resp = client.delete(f"/users/{user['id']}")
+        assert resp.status_code == 200, resp.text
+        assert db_session.query(RoomPlayer).count() == 0
+        assert db_session.query(PlayerAnswer).count() == 0
+
+    def test_delete_all_users_with_answers(self, client, db_session):
+        """Same regression guard for the purge path."""
+        code = _create_room(client)
+        user = _create_user(client, "Answer", "Purged")
+        client.post(f"/rooms/{code}/join", json={"user_id": user["id"], "player_name": "p"})
+        _seed_answer(db_session, code)
+
+        resp = client.post("/users/purge")
+        assert resp.status_code == 200, resp.text
+        assert db_session.query(RoomPlayer).count() == 0
+        assert db_session.query(PlayerAnswer).count() == 0
+        assert client.get("/users/").json() == []
 
     def test_purge_users_keeps_admins(self, client, db_session):
         _create_user(client, "P1", "X")

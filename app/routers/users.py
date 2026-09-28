@@ -182,9 +182,11 @@ def purge_users(
     users = query.all()
     ids = [user.id for user in users]
     if ids:
-        db.query(RoomPlayer).filter(RoomPlayer.user_id.in_(ids)).delete(
-            synchronize_session=False
-        )
+        # Delete room players through the ORM so their player_answers rows are
+        # cascaded too (a bulk DELETE would break the player_answers FK).
+        players = db.query(RoomPlayer).filter(RoomPlayer.user_id.in_(ids)).all()
+        for player in players:
+            db.delete(player)
         for user in users:
             db.delete(user)
         db.commit()
