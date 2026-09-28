@@ -29,6 +29,12 @@ def _get_ws_session(code: str):
     return sessions.get(code)
 
 
+def _pop_ws_session(code: str) -> None:
+    """Drop the in-memory WebSocket session of a room that is being deleted."""
+    from app.websocket.game import sessions
+    sessions.pop(code, None)
+
+
 def _generate_room_code(db: Session) -> str:
     """Generate a unique 4-digit room code."""
     for _ in range(30):
@@ -227,6 +233,46 @@ def end_room(code: str, db: Session = Depends(get_db)):
     db.commit()
     logger.info("Room %s force-ended by admin", code)
     return {"status": "finished", "room_code": code}
+
+
+# ─── Delete / Reset (clear the stage before a live event) ───────────────────
+@router.post("/purge")
+def purge_rooms(db: Session = Depends(get_db)):
+    """DANGER: delete every room together with its players and answers.
+
+    POST (not DELETE /) on purpose: CloudFront only routes /rooms/* to the API.
+    """
+    rooms = db.query(Room).all()
+    codes = [room.code for room in rooms]
+    for room in rooms:
+        db.delete(room)  # cascades room_players -> player_answers
+    db.commit()
+    for code in codes:
+        _pop_ws_session(code)
+    logger.warning("All rooms deleted: %d room(s)", len(codes))
+    return {
+        "message": "All rooms deleted",
+        "rooms_removed": len(codes),
+        "room_codes": codes,
+    }
+
+
+@router.delete("/{code}")
+def delete_room(code: str, db: Session = Depends(get_db)):
+    """Delete a single room together with its players and answers."""
+    room = db.query(Room).filter(Room.code == code).first()
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    player_count = len(room.players)
+    db.delete(room)  # cascades room_players -> player_answers
+    db.commit()
+    _pop_ws_session(code)
+    logger.info("Room %s deleted (%d player(s) removed)", code, player_count)
+    return {
+        "message": "Room deleted",
+        "room_code": code,
+        "players_removed": player_count,
+    }
 
 
 @router.get("/questions/count")

@@ -113,6 +113,13 @@ def update_user(db: Session, user: User, data: UserUpdate) -> User:
 
 
 def delete_user(db: Session, user: User) -> None:
+    # room_players.user_id is a plain column (no FK), so the ORM does not cascade
+    # it: without this the deleted player would linger as a ghost entry in every
+    # room they had joined.
+    from app.models.room import RoomPlayer
+    db.query(RoomPlayer).filter(RoomPlayer.user_id == user.id).delete(
+        synchronize_session=False
+    )
     db.delete(user)
     db.commit()
 

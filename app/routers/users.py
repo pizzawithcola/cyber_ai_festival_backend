@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import user as crud
 from app.database import get_db
+from app.models.room import RoomPlayer
 from app.models.user import User
 from app.models.score import Score
 from app.services.queue_service import enqueue_user
@@ -162,6 +163,40 @@ def delete_user(user_id: int, db: Session = Depends(get_db)):
     crud.delete_user(db, user)
     logger.info("User deleted: id=%s", user_id)
     return {"message": "User deleted", "user_id": user_id}
+
+
+@router.post("/purge")
+def purge_users(
+    include_admins: bool = False,
+    db: Session = Depends(get_db),
+):
+    """DANGER: delete every player account (admin accounts are kept by default).
+
+    Scores go away through the ORM cascade; room player rows are removed
+    explicitly because room_players.user_id is not a foreign key.
+    POST (not DELETE /) on purpose: CloudFront only routes /users/* to the API.
+    """
+    query = db.query(User)
+    if not include_admins:
+        query = query.filter(User.role != "admin")
+    users = query.all()
+    ids = [user.id for user in users]
+    if ids:
+        db.query(RoomPlayer).filter(RoomPlayer.user_id.in_(ids)).delete(
+            synchronize_session=False
+        )
+        for user in users:
+            db.delete(user)
+        db.commit()
+    logger.warning(
+        "Users deleted: %d account(s) removed (include_admins=%s)",
+        len(ids), include_admins,
+    )
+    return {
+        "message": "Users deleted",
+        "users_removed": len(ids),
+        "admins_kept": 0 if include_admins else db.query(User).filter(User.role == "admin").count(),
+    }
 
 
 @router.get("/", response_model=list[UserResponse])
