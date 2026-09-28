@@ -37,6 +37,12 @@ def normalize_game5_to_100(total_score: float, max_possible: float) -> float:
     return round(max(0.0, min(100.0, (total_score / max_possible) * 100.0)), 1)
 
 
+# Everyone gets this long to read a question before the answer window opens.
+READ_TIME_SECONDS = 5
+# Slot-machine style teaser shown before a x2/x3 question.
+BONUS_INTRO_SECONDS = 4
+
+
 def correct_answer_score(answer_time_ms: int, time_limit_ms: int, multiplier: int) -> int:
     """Score for a correct answer: 50 base + up to 50 speed, then × bonus multiplier.
 
@@ -293,9 +299,28 @@ class GameSession:
             return
 
         q = self.questions[self.current_question_idx]
+        multiplier = int(q.get("multiplier", 1))
+
+        # ── Bonus teaser ── A x2/x3 question gets a slot-machine intro first so
+        # the room knows the next answer is worth double/triple.
+        if multiplier >= 2:
+            bonus_msg = {
+                "type": "bonus_intro",
+                "multiplier": multiplier,
+                "number": self.current_question_idx + 1,
+                "total": len(self.questions),
+                "seconds": BONUS_INTRO_SECONDS,
+            }
+            self.state = "bonus"
+            self.snapshot = {**bonus_msg, "phase": "bonus"}
+            await self.broadcast(bonus_msg)
+            await asyncio.sleep(BONUS_INTRO_SECONDS)
+            if self._force_ended:
+                await self._end_game()
+                return
+
         self.state = "question"
         self.answers.clear()
-        self.question_start_ts = time.time()
 
         # Broadcast question (exclude correct answer from players)
         question_msg = {
@@ -307,18 +332,38 @@ class GameSession:
             "options": q["options"],
             "time_limit": q["time_limit"],
             "score": q.get("score", 100),
-            "multiplier": q.get("multiplier", 1),
+            "multiplier": multiplier,
+            "read_time": READ_TIME_SECONDS,
         }
         await self.broadcast(question_msg)
         # Cache current state so reconnecting clients can resume this exact question
         self.snapshot = {
-            "phase": "question",
+            "phase": "reading" if READ_TIME_SECONDS > 0 else "question",
             "question": question_msg,
-            "remaining": q["time_limit"],
+            "remaining": READ_TIME_SECONDS or q["time_limit"],
             "answered_count": 0,
             "is_paused": False,
             "total_players": len(self.players),
         }
+
+        # ── Reading phase ── everybody reads the question first; the answer
+        # window has not opened, so anything submitted now is discarded.
+        if READ_TIME_SECONDS > 0:
+            await asyncio.sleep(READ_TIME_SECONDS)
+            if self._force_ended:
+                await self._end_game()
+                return
+            self.answers.clear()
+
+        # Answer window opens: the speed score is measured from here onwards.
+        self.question_start_ts = time.time()
+        self.snapshot["phase"] = "question"
+        self.snapshot["remaining"] = q["time_limit"]
+        await self.broadcast({
+            "type": "answer_start",
+            "remaining": q["time_limit"],
+            "total_players": len(self.players),
+        })
 
         # Tick loop
         remaining = q["time_limit"]
@@ -610,8 +655,25 @@ class GameSession:
         try:
             if phase == "countdown":
                 await ws.send_text(json.dumps({"type": "countdown", "value": snap.get("countdown_value", 3)}, ensure_ascii=False))
+            elif phase == "bonus":
+                await ws.send_text(json.dumps({
+                    "type": "bonus_intro",
+                    "multiplier": snap.get("multiplier", 2),
+                    "number": snap.get("number", 0),
+                    "total": snap.get("total", 0),
+                    "seconds": snap.get("seconds", BONUS_INTRO_SECONDS),
+                }, ensure_ascii=False))
+            elif phase == "reading":
+                q = dict(snap.get("question") or {})
+                await ws.send_text(json.dumps(q, ensure_ascii=False))
+                await ws.send_text(json.dumps({
+                    "type": "reading",
+                    "remaining": snap.get("remaining", READ_TIME_SECONDS),
+                }, ensure_ascii=False))
             elif phase == "question":
-                q = snap.get("question") or {}
+                # Strip read_time: this question is already in its answer window,
+                # otherwise the client would drop back into the reading screen.
+                q = {**(snap.get("question") or {}), "read_time": 0}
                 # question payload already excludes the correct answer
                 await ws.send_text(json.dumps(q, ensure_ascii=False))
                 await ws.send_text(json.dumps({
