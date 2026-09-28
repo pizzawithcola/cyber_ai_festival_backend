@@ -348,8 +348,17 @@ class GameSession:
 
         # ── Reading phase ── everybody reads the question first; the answer
         # window has not opened, so anything submitted now is discarded.
+        # The countdown ticks down one second at a time so both screens show
+        # 5-4-3-2-1 instead of a frozen 5.
         if READ_TIME_SECONDS > 0:
-            await asyncio.sleep(READ_TIME_SECONDS)
+            for remaining_read in range(READ_TIME_SECONDS - 1, 0, -1):
+                await asyncio.sleep(1)
+                if self._force_ended:
+                    await self._end_game()
+                    return
+                self.snapshot["remaining"] = remaining_read
+                await self.broadcast({"type": "reading", "remaining": remaining_read})
+            await asyncio.sleep(1)  # final second of the reading window
             if self._force_ended:
                 await self._end_game()
                 return
