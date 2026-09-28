@@ -67,6 +67,8 @@ def get_ranking(
     rows = (
         db.query(Score, User)
         .join(User, Score.user_id == User.id)
+        # Admin accounts operate the event; they are never part of a ranking.
+        .filter(User.role != "admin")
         .filter(column.isnot(None))
         .order_by(desc(column))
         .limit(limit)
@@ -106,6 +108,8 @@ def get_all_rankings(
         rows = (
             db.query(Score, User)
             .join(User, Score.user_id == User.id)
+            # Admin accounts operate the event; they are never part of a ranking.
+            .filter(User.role != "admin")
             .filter(column.isnot(None))
             .order_by(desc(column))
             .limit(limit)
