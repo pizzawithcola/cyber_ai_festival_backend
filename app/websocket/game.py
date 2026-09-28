@@ -512,6 +512,16 @@ class GameSession:
             },
             "correct_option": correct_option,
             "distribution": distribution,
+            "multiplier": multiplier,
+            "scores": [
+                {
+                    "player_id": p.room_player_id,
+                    "player_name": p.player_name,
+                    "score_earned": (self.answers.get(p.room_player_id) or {}).get("score", 0),
+                    "is_correct": bool((self.answers.get(p.room_player_id) or {}).get("correct")),
+                }
+                for p in self.players
+            ],
             "result_answers": {
                 str(k): {"option": v.get("option"), "correct": v.get("correct"), "score": v.get("score", 0)}
                 for k, v in self.answers.items()
@@ -531,12 +541,25 @@ class GameSession:
                     "distribution": distribution,
                 }, ensure_ascii=False))
 
-        # Send admin result
+        # Send admin result — includes each player's score for THIS question so
+        # the big screen can show the x2/x3 payoff right after the question.
         if self.admin:
+            scores = []
+            for p in self.players:
+                ans = self.answers.get(p.room_player_id)
+                scores.append({
+                    "player_id": p.room_player_id,
+                    "player_name": p.player_name,
+                    "score_earned": (ans or {}).get("score", 0),
+                    "is_correct": bool((ans or {}).get("correct")),
+                })
+            scores.sort(key=lambda s: s["score_earned"], reverse=True)
             await self.admin.send_text(json.dumps({
                 "type": "question_result",
                 "correct_option": correct_option,
                 "distribution": distribution,
+                "multiplier": multiplier,
+                "scores": scores,
                 "answers": {
                     str(k): {"option": v["option"], "correct": v["correct"]}
                     for k, v in self.answers.items()
@@ -701,6 +724,8 @@ class GameSession:
                         "type": "question_result",
                         "correct_option": snap.get("correct_option"),
                         "distribution": snap.get("distribution", {}),
+                        "multiplier": (q or {}).get("multiplier", 1),
+                        "scores": snap.get("scores", []),
                         "answers": snap.get("result_answers", {}),
                     }, ensure_ascii=False))
                 else:
