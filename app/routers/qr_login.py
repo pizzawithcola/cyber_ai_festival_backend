@@ -70,6 +70,10 @@ class PairResponse(BaseModel):
 class StatusResponse(BaseModel):
     ok: bool
     user: dict | None = None
+    # False when the server no longer knows this station code (e.g. the backend
+    # restarted and the in-memory station table was rebuilt). The station uses
+    # this to re-issue its QR code instead of silently polling a dead code.
+    valid: bool = True
 
 
 @router.post("/session", response_model=SessionResponse)
@@ -88,7 +92,13 @@ def pair(data: PairRequest, db: Session = Depends(get_db)) -> PairResponse:
     _prune_stale()
     code = (data.station_code or "").strip().upper()
     if code not in _stations:
-        raise HTTPException(status_code=404, detail="Station not found")
+        # 400 rather than 404 on purpose: CloudFront rewrites every 403/404 body
+        # to index.html, which would leave the phone showing a generic
+        # "pairing failed" with no way to tell what actually went wrong.
+        raise HTTPException(
+            status_code=400,
+            detail="Station code expired - refresh the QR code on the game station",
+        )
 
     nickname = (data.nickname or "").strip()
     if not nickname:
@@ -96,7 +106,11 @@ def pair(data: PairRequest, db: Session = Depends(get_db)) -> PairResponse:
 
     user = db.query(User).filter(User.nickname.ilike(nickname)).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Invalid nickname")
+        # Also 400: see the note above about CloudFront swallowing 404 bodies.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nickname '{nickname}' is not registered",
+        )
 
     snapshot = {
         "user_id": user.id,
@@ -112,11 +126,16 @@ def pair(data: PairRequest, db: Session = Depends(get_db)) -> PairResponse:
 
 @router.get("/status/{station_code}", response_model=StatusResponse)
 def status(station_code: str) -> StatusResponse:
-    """The station polls this; each poll consumes the oldest waiting pairing."""
+    """The station polls this; each poll consumes the oldest waiting pairing.
+
+    Always answers 200: a 404 body would be replaced by index.html at the CDN,
+    leaving the station unable to tell "my code is gone" from a network blip -
+    and therefore unable to re-issue its QR code.
+    """
     _prune_stale()
     code = (station_code or "").strip().upper()
     if code not in _stations:
-        raise HTTPException(status_code=404, detail="Station not found")
+        return StatusResponse(ok=False, valid=False)
 
     queue = _pending.get(code)
     if queue:

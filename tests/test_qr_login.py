@@ -43,18 +43,33 @@ class TestQrLogin:
             "station_code": code,
             "nickname": "NOPE1",
         })
-        assert p.status_code == 404
+        # 400 (not 404) so the CDN passes the reason through to the phone
+        assert p.status_code == 400
 
     def test_pair_unknown_station(self, client, sample_user):
         p = client.post("/qr-login/pair", json={
             "station_code": "ZZZZZZ",
             "nickname": sample_user["nickname"],
         })
-        assert p.status_code == 404
+        # 400 (not 404) so the CDN passes the reason through to the phone
+        assert p.status_code == 400
 
-    def test_status_unknown_station(self, client):
+    def test_status_unknown_station_reports_invalid(self, client):
+        """An unknown code must still answer 200 with valid=false.
+
+        The station relies on this to notice that its code was lost (backend
+        restart) and re-issue the QR code.
+        """
         st = client.get("/qr-login/status/ZZZZZZ")
-        assert st.status_code == 404
+        assert st.status_code == 200
+        assert st.json()["ok"] is False
+        assert st.json()["valid"] is False
+
+    def test_status_known_station_is_valid(self, client):
+        code = client.post("/qr-login/session").json()["station_code"]
+        st = client.get(f"/qr-login/status/{code}")
+        assert st.status_code == 200
+        assert st.json()["valid"] is True
 
     def test_station_reusable_fifo(self, client, sample_user):
         u2 = client.post("/users/", json={
