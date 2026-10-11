@@ -7,6 +7,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.crud import event as event_crud
 from app.models.score import Score
 from app.models.user import User
 
@@ -63,12 +64,24 @@ def get_ranking(
 ):
     """获取指定分数类型的排行榜"""
     column = SCORE_COLUMN_MAP[score_type]
+    current_event = event_crud.get_current_event(db)
 
-    rows = (
+    query = (
         db.query(Score, User)
         .join(User, Score.user_id == User.id)
         # Admin accounts operate the event; they are never part of a ranking.
         .filter(User.role != "admin")
+    )
+    # Scope to the current event's time window (registration time). When no
+    # event is marked current, keep the legacy behaviour: show everything.
+    if current_event:
+        query = query.filter(
+            User.created_at >= current_event.start_at,
+            User.created_at <= current_event.end_at,
+        )
+
+    rows = (
+        query
         .filter(column.isnot(None))
         .order_by(desc(column))
         .limit(limit)
@@ -103,13 +116,23 @@ def get_all_rankings(
 ):
     """一次获取所有排行榜（game1~game5 + total）"""
     result = {}
+    current_event = event_crud.get_current_event(db)
     for score_type in ScoreType:
         column = SCORE_COLUMN_MAP[score_type]
-        rows = (
+        query = (
             db.query(Score, User)
             .join(User, Score.user_id == User.id)
             # Admin accounts operate the event; they are never part of a ranking.
             .filter(User.role != "admin")
+        )
+        # Scope to the current event's time window (registration time).
+        if current_event:
+            query = query.filter(
+                User.created_at >= current_event.start_at,
+                User.created_at <= current_event.end_at,
+            )
+        rows = (
+            query
             .filter(column.isnot(None))
             .order_by(desc(column))
             .limit(limit)

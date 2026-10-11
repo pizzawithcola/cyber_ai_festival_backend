@@ -116,6 +116,25 @@ try:
 except Exception:
     logger.warning("Migration: failed to add 'balance' column to rooms: %s", traceback.format_exc())
 
+# ─── Auto-migration: Add is_current column to events ───────────────────────────
+# Marks the single active event; leaderboard/ranking are scoped to it.
+try:
+    with engine.connect() as conn:
+        r = conn.execute(text(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='events' AND column_name='is_current'"
+        ))
+        if not r.fetchone():
+            conn.execute(text(
+                "ALTER TABLE events ADD COLUMN is_current BOOLEAN NOT NULL DEFAULT false"
+            ))
+            conn.commit()
+            logger.info("Migration: Added 'is_current' column to events table")
+        else:
+            logger.info("Migration: 'is_current' column already exists")
+except Exception:
+    logger.warning("Migration: failed to add 'is_current' column to events: %s", traceback.format_exc())
+
 # ─── Legacy startup migrations (role / admin / question seed) ──────────────────
 try:
     with engine.connect() as conn:

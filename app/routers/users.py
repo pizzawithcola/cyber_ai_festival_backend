@@ -5,9 +5,11 @@ import time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.crud import user as crud
+from app.crud import event as event_crud
 from app.database import get_db
 from app.models.room import RoomPlayer
 from app.models.user import User
@@ -63,6 +65,21 @@ def login(data: UserLogin, db: Session = Depends(get_db)):
     if not user:
         logger.warning("Login failed: nickname not found (%s)", data.nickname)
         raise HTTPException(status_code=401, detail="Invalid nickname")
+    # Current-event scoping: a player whose registration predates (or postdates)
+    # the active event is expired and must register anew. Admins are exempt.
+    if user.role != "admin":
+        current_event = event_crud.get_current_event(db)
+        if current_event and not (
+            current_event.start_at <= user.created_at <= current_event.end_at
+        ):
+            logger.warning(
+                "Login rejected: user %s (id=%s) outside current event window",
+                user.nickname, user.id,
+            )
+            raise HTTPException(
+                status_code=401,
+                detail="Registration expired, please register again",
+            )
     user = crud.ensure_nickname(db, user)
     logger.info("Login success: id=%s, nickname=%s", user.id, user.nickname)
     return user
@@ -108,7 +125,18 @@ def get_all_users_with_scores(db: Session = Depends(get_db)):
         Score.game5_score,
         Score.total_score
     ).outerjoin(Score, User.id == Score.user_id)
-    
+
+    # Scope the admin user list to the current event, but always keep admin
+    # accounts visible so the panel can still manage itself.
+    current_event = event_crud.get_current_event(db)
+    if current_event:
+        query = query.filter(
+            or_(
+                User.role == "admin",
+                (User.created_at >= current_event.start_at) & (User.created_at <= current_event.end_at),
+            )
+        )
+
     results = query.all()
     
     # Convert to response format

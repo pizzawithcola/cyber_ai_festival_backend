@@ -46,6 +46,34 @@ def get_event(db: Session, event_id: int) -> Event | None:
     return db.query(Event).filter(Event.id == event_id).first()
 
 
+def get_current_event(db: Session) -> Event | None:
+    """The single event currently marked active (at most one)."""
+    return db.query(Event).filter(Event.is_current.is_(True)).first()
+
+
+def set_current_event(db: Session, event_id: int) -> Event | None:
+    """Mark one event as current, clearing the flag on every other event."""
+    event = db.get(Event, event_id)
+    if event is None:
+        return None
+    db.query(Event).filter(Event.id != event_id).update({Event.is_current: False})
+    event.is_current = True
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def user_in_event_filter(event: Event | None):
+    """Return a SQLAlchemy expression for 'user belongs to this event'.
+
+    Returns None when there is no current event, so callers can skip filtering
+    and keep the pre-event behaviour (show everything) for backward compatibility.
+    """
+    if event is None:
+        return None
+    return (User.created_at >= event.start_at) & (User.created_at <= event.end_at)
+
+
 def delete_event(db: Session, event: Event) -> None:
     db.delete(event)
     db.commit()

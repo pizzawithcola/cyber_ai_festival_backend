@@ -16,6 +16,7 @@ class EventResponse(BaseModel):
     description: str | None = None
     start_at: datetime
     end_at: datetime
+    is_current: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

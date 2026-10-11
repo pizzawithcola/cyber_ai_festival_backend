@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.crud import event as event_crud
 from app.models.room import Room, RoomPlayer, Question
 from app.models.user import User
 from app.constants import GAME_CATEGORIES
@@ -95,7 +96,16 @@ def create_room(data: CreateRoomRequest, db: Session = Depends(get_db)):
 @router.get("/", response_model=list[RoomListItem])
 def list_rooms(db: Session = Depends(get_db)):
     """List all rooms with player details and scores."""
-    rooms = db.query(Room).order_by(Room.created_at.desc()).all()
+    query = db.query(Room).order_by(Room.created_at.desc())
+    # Scope to the current event's window so a previous festival's rooms don't
+    # clutter the admin console.
+    current_event = event_crud.get_current_event(db)
+    if current_event:
+        query = query.filter(
+            Room.created_at >= current_event.start_at,
+            Room.created_at <= current_event.end_at,
+        )
+    rooms = query.all()
     result = []
     for room in rooms:
         players = [

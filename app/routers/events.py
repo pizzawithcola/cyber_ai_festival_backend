@@ -37,6 +37,16 @@ def get_event_report(event_id: int, db: Session = Depends(get_db)):
     return crud.build_report(db, event)
 
 
+@router.post("/{event_id}/set-current", response_model=EventResponse)
+def set_current_event(event_id: int, db: Session = Depends(get_db)):
+    """Mark one event as the active one; every other event is un-marked."""
+    event = crud.set_current_event(db, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    logger.info("Current event set: id=%s name=%s", event.id, event.name)
+    return event
+
+
 @router.delete("/{event_id}")
 def delete_event(event_id: int, db: Session = Depends(get_db)):
     event = crud.get_event(db, event_id)
