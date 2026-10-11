@@ -5,11 +5,8 @@ FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies needed for building
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# All Python deps ship as prebuilt wheels (psycopg2-binary bundles libpq; uvloop /
+# httptools provide manylinux wheels), so no compiler or libpq headers are needed.
 
 # Copy requirements and install Python dependencies (全局安装，解决 appuser 执行权限问题)
 COPY requirements.txt .
@@ -21,10 +18,7 @@ FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
-# Install only runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# psycopg2-binary bundles its own libpq, so no system runtime packages are needed.
 
 # Create logs directory
 RUN mkdir -p /app/logs
